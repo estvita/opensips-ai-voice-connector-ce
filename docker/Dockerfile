@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 50060
 
-CMD ["python3", "src/main.py"]
+CMD ["python3", "-u", "src/main.py"]

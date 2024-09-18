@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: ../
+      dockerfile: ./docker/Dockerfile
+    network_mode: host
+    env_file:
+      - .env
+  
+  opensips:
+    image: opensips/opensips:latest
+    volumes:
+      - ../cfg/:/etc/opensips/
+    network_mode: host

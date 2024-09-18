@@ -13,6 +13,8 @@ from call import Call
 
 from chatgpt import ChatGPT
 
+import logging
+
 load_dotenv()
 
 API_KEY = os.getenv("DEEPGRAM_API_KEY")
@@ -21,6 +23,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 myargs = args.OpenSIPSCLIArgs(config='./cfg/opensips-cli.cfg')
 mycli = cli.OpenSIPSCLI(myargs)
 calls = {}
+
+logging.basicConfig(
+    level=logging.INFO,  # Set level to INFO or DEBUG for more verbosity
+    format='%(asctime)s - %(levelname)s - %(message)s',
+)
 
 deepgram: DeepgramClient = DeepgramClient(API_KEY)
 chatgpt = ChatGPT(OPENAI_API_KEY, "gpt-4o")
@@ -50,7 +57,7 @@ def udp_handler(sock):
         try:
             new_call = Call(key, sdp_str, deepgram, mycli, chatgpt)
         except Exception as e:
-            print(f"Error creating call: {e}")
+            logging.info(f"Error creating call: {e}")
             return
 
         calls[key] = new_call
@@ -60,19 +67,19 @@ def udp_handler(sock):
         calls.pop(key, None)
 
 async def shutdown(signal, loop, event_socket):
-    print(f"Received exit signal {signal.name}...")
+    logging.info(f"Received exit signal {signal.name}...")
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     [task.cancel() for task in tasks]
-    print(f"Cancelling {len(tasks)} outstanding tasks")
+    logging.info(f"Cancelling {len(tasks)} outstanding tasks")
     for call in calls.values():
         await call.close()
     event_socket.close()
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
-    print("Shutdown complete.")
+    logging.info("Shutdown complete.")
 
 async def main():
-    print(mycli.mi('event_subscribe', ['E_UA_SESSION', 'udp:127.0.0.1:50060']))
+    logging.info(mycli.mi('event_subscribe', ['E_UA_SESSION', 'udp:127.0.0.1:50060']))
     
     event_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     event_socket.bind(('localhost', 50060))

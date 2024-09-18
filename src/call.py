@@ -9,6 +9,7 @@ from codec import Opus, PCMA, PCMU
 
 from queue import Queue
 from chatgpt import ChatGPT
+import logging
 
 from deepgram import (
     DeepgramClient,
@@ -32,7 +33,7 @@ class Call():
         self.stop_event = asyncio.Event()
         self.stop_event.clear()
 
-        print(sdp)
+        logging.info(sdp)
 
         codec_format = None
         for format in sdp.media[0].fmt:
@@ -72,11 +73,11 @@ class Call():
             sentence = result.channel.alternatives[0].transcript
             if len(sentence) == 0:
                 return
-            print(f"speaker: {sentence}")
+            logging.info(f"speaker: {sentence}")
             try:
                 assistant_response = await chatgpt.send_message(b2b_key, sentence)
             except Exception as e:
-                print(e)
+                logging.info(e)
                 return
             response = await deepgram.speak.asyncrest.v("1").stream_raw({"text": assistant_response}, speak_options)
             asyncio.create_task(codec_ref.process_response(response))
@@ -84,13 +85,13 @@ class Call():
         self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
         asyncio.create_task(self.start_connection())
 
-        print(cli.mi('ua_session_reply', {'key': b2b_key, 'method': 'INVITE', 'code': 200, 'reason': 'OK', 'body': str(sdp)}))
+        logging.info(cli.mi('ua_session_reply', {'key': b2b_key, 'method': 'INVITE', 'code': 200, 'reason': 'OK', 'body': str(sdp)}))
     
     async def start_connection(self):
-        print(f"Starting connection for call {self.b2b_key}")
+        logging.info(f"Starting connection for call {self.b2b_key}")
 
         if await self.dg_connection.start(self.transcription_options) is False:
-            print("Failed to start connection")
+            logging.info("Failed to start connection")
             return
 
         loop = asyncio.get_running_loop()
@@ -119,7 +120,7 @@ class Call():
         await self.dg_connection.send(audio)
 
     async def close(self):
-        print(f"Call {self.b2b_key} closing")
+        logging.info(f"Call {self.b2b_key} closing")
         self.chatgpt.delete_call(self.b2b_key)
         self.stop_event.set()
         loop = asyncio.get_running_loop()

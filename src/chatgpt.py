@@ -1,4 +1,5 @@
 from openai import AsyncOpenAI
+import logging
 
 class ChatGPT:
     def __init__(self, api_key, model):
@@ -9,6 +10,7 @@ class ChatGPT:
     
     def create_call(self, b2b_key):
         self.contexts[b2b_key] = []
+        self.contexts[b2b_key].append({"role": "system", "content": "Please answer with simple text messages."})
 
     def delete_call(self, b2b_key):
         self.contexts.pop(b2b_key)
@@ -24,5 +26,5 @@ class ChatGPT:
         role = response.choices[0].message.role
         content = response.choices[0].message.content
         self.contexts[b2b_key].append({"role": role, "content": content})
-        print(f"assistant: {content}")
+        logging.info(f"assistant: {content}")
         return content

@@ -15,7 +15,7 @@ docker compose up
 Then, you can use a softphone like Zoiper or Linphone to start a call to the OpenSIPS server. The call will be answered and you can start talking to the conversational AI.
 
 ### API Keys
-You need to set the following environment variables with your API keys in the [.env](.env) file:
+You need to set the following environment variables with your API keys in the [.env](docker/.env) file:
 ```bash
 DEEPGRAM_API_KEY=
 OPENAI_API_KEY=

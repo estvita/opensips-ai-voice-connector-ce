@@ -20,3 +20,10 @@ You need to set the following environment variables with your API keys in the [.
 DEEPGRAM_API_KEY=
 OPENAI_API_KEY=
 ```
+
+### OpenSIPS
+You can use other OpenSIPS server, but you need to add `MI_IP` and `MI_PORT` to the [.env](docker/.env) file and start only the application with the following commands:
+```bash
+cd docker
+docker compose up app
+```

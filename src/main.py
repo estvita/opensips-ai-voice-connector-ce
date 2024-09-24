@@ -20,7 +20,14 @@ load_dotenv()
 API_KEY = os.getenv("DEEPGRAM_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-myargs = args.OpenSIPSCLIArgs(config='./cfg/opensips-cli.cfg')
+MI_IP = os.getenv("MI_IP", default='127.0.0.1')
+MI_PORT = os.getenv("MI_PORT", default=8080)
+
+myargs = args.OpenSIPSCLIArgs(log_level='WARNING',
+                              communication_type='datagram',
+                              datagram_ip=MI_IP,
+                              datagram_port=MI_PORT)
+                              
 mycli = cli.OpenSIPSCLI(myargs)
 calls = {}
 

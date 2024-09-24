@@ -1,5 +1,6 @@
 services:
   app:
+    container_name: conversational-ai
     build:
       context: ../
       dockerfile: ./docker/Dockerfile
@@ -8,6 +9,7 @@ services:
       - .env
   
   opensips:
+    container_name: opensips-conv-ai
     image: opensips/opensips:latest
     volumes:
       - ../cfg/:/etc/opensips/

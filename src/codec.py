@@ -3,14 +3,15 @@ from rtp import GenerateRTPpacket
 from deepgram import LiveOptions, SpeakOptions
 
 class GenericCodec:
-    def __init__(self, media, queue):
+    def __init__(self, params, queue):
         self.marker = 1
-        self.media = media
+        self.params = params
         self.queue = queue
 
         self.sequence_number = random.randint(0, 10000)
         self.timestamp = random.randint(0, 10000)
         self.ssrc = random.randint(0, 2**31)
+        self.payload_type = params.payloadType
 
     def process_response(self, response):
         pass
@@ -54,13 +55,12 @@ class GenericCodec:
 
 
 class Opus(GenericCodec):
-    def __init__(self, media, queue):
-        super().__init__(media, queue)
+    def __init__(self, params, queue):
+        super().__init__(params, queue)
 
         self.name = 'opus'
         self.sample_rate = 48000
         self.bitrate = 96000
-        self.payload_type = 106
         self.container = 'ogg'
 
         self.ts_increment = self.sample_rate // 50  # 20ms
@@ -147,8 +147,8 @@ class Opus(GenericCodec):
 
 
 class G711(GenericCodec):
-    def __init__(self, media, queue):
-        super().__init__(media, queue)
+    def __init__(self, params, queue):
+        super().__init__(params, queue)
 
         self.sample_rate = 8000
         self.bitrate = 64000
@@ -193,10 +193,9 @@ class G711(GenericCodec):
 
 
 class PCMU(G711):
-    def __init__(self, media, queue):
-        super().__init__(media, queue)
+    def __init__(self, params, queue):
+        super().__init__(params, queue)
         self.name = 'mulaw'
-        self.payload_type = 0
     
     def get_silence(self):
         payload_len = ((self.sample_rate * 20 * 8) // 1000) // 8
@@ -204,10 +203,9 @@ class PCMU(G711):
 
     
 class PCMA(G711):
-    def __init__(self, media, queue):
-        super().__init__(media, queue)
+    def __init__(self, params, queue):
+        super().__init__(params, queue)
         self.name = 'alaw'
-        self.payload_type = 8
     
     def get_silence(self):
         payload_len = ((self.sample_rate * 20 * 8) // 1000) // 8

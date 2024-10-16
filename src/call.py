@@ -17,6 +17,9 @@ from deepgram import (
     LiveTranscriptionEvents
 )
 
+class CodecException(Exception):
+    """ Raised when there is a codec mismatch """
+
 class Call():
     def __init__(self, b2b_key, sdp_str, deepgram: DeepgramClient, cli: cli.OpenSIPSCLI, chatgpt: ChatGPT):
         host_ip = os.getenv('RTP_IP', socket.gethostbyname(socket.gethostname()))
@@ -34,7 +37,6 @@ class Call():
         else:
             self.client_addr = sdp.host
         self.client_port = sdp.media[0].port
-        print("%s:%s", self.client_addr, self.client_port)
 
         self.rtp = Queue()
         self.stop_event = asyncio.Event()
@@ -42,25 +44,25 @@ class Call():
 
         logging.info(sdp)
 
-        codec_format = None
-        for format in sdp.media[0].fmt:
-            if format in [0, 8, 106]:
-                codec_format = format
+        for codec in sdp.media[0].rtp.codecs:
+            if codec.name.lower() in [ "pcmu", "pcma", "opus" ]:
                 break
-
-        if codec_format is None:
-            raise Exception("No supported codec found")
+        else:
+            raise CodecException("No supported codec found")
         
         self.codec = None
         
-        if codec_format == 0:
-            self.codec = PCMU(media=sdp.media[0], queue=self.rtp)
-        elif codec_format == 8:
-            self.codec = PCMA(media=sdp.media[0], queue=self.rtp)
-        elif codec_format == 106:
-            self.codec = Opus(media=sdp.media[0], queue=self.rtp)
+        codec_name = codec.name.lower()
+        if codec_name == "pcmu":
+            self.codec = PCMU(params=codec, queue=self.rtp)
+        elif codec_name == "pcma":
+            self.codec = PCMA(params=codec, queue=self.rtp)
+        elif codec_name == "opus":
+            self.codec = Opus(params=codec, queue=self.rtp)
 
         self.transcription_options = self.codec.make_live_options()
+
+        # Remove all other codecs
 
         speak_options = self.codec.make_speak_options()
 
@@ -73,6 +75,10 @@ class Call():
             sdp.host = host_ip
         if sdp.media[0].host:
             sdp.media[0].host = host_ip
+
+        # update SDP to return only chosen codec, as we do not accept anything else
+        sdp.media[0].rtp.codecs = [self.codec.params]
+        sdp.media[0].fmt = [self.codec.payload_type]
 
         self.data = asyncio.Queue()
 

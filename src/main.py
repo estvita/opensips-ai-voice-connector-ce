@@ -9,7 +9,7 @@ from deepgram.utils import verboselogs
 
 from deepgram import DeepgramClient
 
-from call import Call
+from call import Call, CodecException
 
 from chatgpt import ChatGPT
 
@@ -63,8 +63,14 @@ def udp_handler(sock):
 
         try:
             new_call = Call(key, sdp_str, deepgram, mycli, chatgpt)
+        except CodecException:
+            mycli.mi('ua_session_reply', {'key':key, 'method': method,
+                                          'code': 488, 'reason': 'Not Acceptable Here'})
+            return
         except Exception as e:
-            logging.info(f"Error creating call: {e}")
+            logging.exception(f"Error creating call: {e}")
+            mycli.mi('ua_session_reply', {'key':key, 'method': method,
+                                          'code': 500, 'reason': 'Server Internal Error'})
             return
 
         calls[key] = new_call

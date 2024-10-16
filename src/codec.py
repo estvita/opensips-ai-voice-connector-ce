@@ -24,7 +24,8 @@ class GenericCodec:
             language="en-US",
             punctuate=True,
             filler_words=True,
-            endpointing=1000
+            interim_results=True,
+            utterance_end_ms="1000"
         )
 
     def make_speak_options(self):

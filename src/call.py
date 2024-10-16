@@ -81,18 +81,28 @@ class Call():
         codec_ref = self.codec
         chatgpt.create_call(b2b_key)
 
+        self.buf = []
+        sentences = self.buf
+
         async def on_message(self, result, **kwargs):
             sentence = result.channel.alternatives[0].transcript
             if len(sentence) == 0:
                 return
-            logging.info(f"speaker: {sentence}")
+            if not result.is_final:
+                return
+            sentences.append(sentence)
+            if not sentence.endswith(("?", ".", "!")):
+                return
             try:
-                assistant_response = await chatgpt.send_message(b2b_key, sentence)
+                phrase = " ".join([s for s in sentences])
+                logging.info(f"Speaker: {phrase}")
+                assistant_response = await chatgpt.send_message(b2b_key, phrase)
             except Exception as e:
                 logging.info(e)
                 return
             response = await deepgram.speak.asyncrest.v("1").stream_raw({"text": assistant_response}, speak_options)
             asyncio.create_task(codec_ref.process_response(response))
+            sentences.clear()
 
         self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
         asyncio.create_task(self.start_connection())

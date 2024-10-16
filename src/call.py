@@ -29,6 +29,9 @@ class Call():
 
         self.chatgpt = chatgpt
 
+        # remove rtcp line, since the parser throws an error on it
+        sdp_str = "\n".join([ l for l in sdp_str.split("\n") if not l.startswith("a=rtcp:")])
+
         sdp = SessionDescription.parse(sdp_str)
         #sdp.media[0].direction = 'recvonly'
 

@@ -28,6 +28,7 @@ class Call():
         self.cli = cli
 
         self.chatgpt = chatgpt
+        self.deepgram = deepgram
 
         # remove rtcp line, since the parser throws an error on it
         sdp_str = "\n".join([ l for l in sdp_str.split("\n") if not l.startswith("a=rtcp:")])
@@ -67,7 +68,7 @@ class Call():
 
         # Remove all other codecs
 
-        speak_options = self.codec.make_speak_options()
+        self.speak_options = self.codec.make_speak_options()
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.serversock.bind((host_ip, 0))
@@ -87,8 +88,9 @@ class Call():
 
         self.dg_connection = deepgram.listen.asyncwebsocket.v("1")
 
-        codec_ref = self.codec
+        call_ref = self
         chatgpt.create_call(b2b_key)
+
 
         self.buf = []
         sentences = self.buf
@@ -109,14 +111,17 @@ class Call():
             except Exception as e:
                 logging.info(e)
                 return
-            response = await deepgram.speak.asyncrest.v("1").stream_raw({"text": assistant_response}, speak_options)
-            asyncio.create_task(codec_ref.process_response(response))
             sentences.clear()
+            await call_ref.speak(assistant_response)
 
         self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
         asyncio.create_task(self.start_connection())
 
         logging.info(cli.mi('ua_session_reply', {'key': b2b_key, 'method': 'INVITE', 'code': 200, 'reason': 'OK', 'body': str(sdp)}))
+
+    async def speak(self, phrase):
+        response = await self.deepgram.speak.asyncrest.v("1").stream_raw({"text": phrase}, self.speak_options)
+        asyncio.create_task(self.codec.process_response(response))
     
     async def start_connection(self):
         logging.info(f"Starting connection for call {self.b2b_key}")

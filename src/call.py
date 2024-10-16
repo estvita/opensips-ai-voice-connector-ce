@@ -23,6 +23,7 @@ class CodecException(Exception):
 class Call():
     def __init__(self, b2b_key, sdp_str, deepgram: DeepgramClient, cli: cli.OpenSIPSCLI, chatgpt: ChatGPT):
         host_ip = os.getenv('RTP_IP', socket.gethostbyname(socket.gethostname()))
+        self.welcome_msg = os.getenv('WELCOME_MSG', None)
 
         self.b2b_key = b2b_key
         self.cli = cli
@@ -141,6 +142,10 @@ class Call():
         packet = DecodeRTPpacket(data.hex())
         self.data.put_nowait(bytes.fromhex(packet['payload']))
         asyncio.create_task(self.send_audio())
+        if self.welcome_msg:
+            phrase = self.welcome_msg
+            self.welcome_msg = None
+            asyncio.create_task(self.speak(phrase))
 
     async def send_rtp(self):
         while not self.stop_event.is_set():

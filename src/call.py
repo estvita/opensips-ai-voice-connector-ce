@@ -1,3 +1,4 @@
+import os
 import socket
 import asyncio
 from aiortc.sdp import SessionDescription
@@ -18,7 +19,7 @@ from deepgram import (
 
 class Call():
     def __init__(self, b2b_key, sdp_str, deepgram: DeepgramClient, cli: cli.OpenSIPSCLI, chatgpt: ChatGPT):
-        host_ip = socket.gethostbyname(socket.gethostname())
+        host_ip = os.getenv('RTP_IP', socket.gethostbyname(socket.gethostname()))
 
         self.b2b_key = b2b_key
         self.cli = cli
@@ -26,10 +27,14 @@ class Call():
         self.chatgpt = chatgpt
 
         sdp = SessionDescription.parse(sdp_str)
-        sdp.media[0].direction = 'recvonly'
+        #sdp.media[0].direction = 'recvonly'
 
-        self.client_addr = sdp.host
+        if sdp.media[0].host:
+            self.client_addr = sdp.media[0].host
+        else:
+            self.client_addr = sdp.host
         self.client_port = sdp.media[0].port
+        print("%s:%s", self.client_addr, self.client_port)
 
         self.rtp = Queue()
         self.stop_event = asyncio.Event()
@@ -62,8 +67,12 @@ class Call():
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.serversock.bind((host_ip, 0))
 
+        sdp.origin = f"{sdp.origin.rsplit(' ', 1)[0]} {host_ip}"
         sdp.media[0].port = self.serversock.getsockname()[1]
-        sdp.media[0].host = host_ip
+        if sdp.host:
+            sdp.host = host_ip
+        if sdp.media[0].host:
+            sdp.media[0].host = host_ip
 
         self.data = asyncio.Queue()
 

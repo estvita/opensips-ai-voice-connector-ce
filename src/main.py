@@ -86,12 +86,15 @@ async def shutdown(signal, loop, event_socket):
     logging.info("Shutdown complete.")
 
 async def main():
-    host_ip = socket.gethostbyname(socket.gethostname())
-    logging.info(f"Starting server at {host_ip}:50060")
-    logging.info(mycli.mi('event_subscribe', ['E_UA_SESSION', f'udp:{host_ip}:50060']))
-    
+    host_ip = os.getenv("EVENT_IP", "127.0.0.1")
+    port = os.getenv("EVENT_PORT", 0)
+
     event_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    event_socket.bind((host_ip, 50060))
+    event_socket.bind((host_ip, port))
+    _, port = event_socket.getsockname()
+
+    logging.info(f"Starting server at {host_ip}:{port}")
+    logging.info(mycli.mi('event_subscribe', ['E_UA_SESSION', f'udp:{host_ip}:{port}']))
     
     loop = asyncio.get_running_loop()
     stop = loop.create_future()

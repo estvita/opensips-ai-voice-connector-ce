@@ -18,6 +18,8 @@ from deepgram import (
 
 class Call():
     def __init__(self, b2b_key, sdp_str, deepgram: DeepgramClient, cli: cli.OpenSIPSCLI, chatgpt: ChatGPT):
+        host_ip = socket.gethostbyname(socket.gethostname())
+
         self.b2b_key = b2b_key
         self.cli = cli
 
@@ -58,9 +60,10 @@ class Call():
         speak_options = self.codec.make_speak_options()
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.serversock.bind(('localhost', 0))
+        self.serversock.bind((host_ip, 0))
 
         sdp.media[0].port = self.serversock.getsockname()[1]
+        sdp.media[0].host = host_ip
 
         self.data = asyncio.Queue()
 

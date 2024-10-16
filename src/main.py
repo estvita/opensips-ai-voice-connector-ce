@@ -86,10 +86,12 @@ async def shutdown(signal, loop, event_socket):
     logging.info("Shutdown complete.")
 
 async def main():
-    logging.info(mycli.mi('event_subscribe', ['E_UA_SESSION', 'udp:127.0.0.1:50060']))
+    host_ip = socket.gethostbyname(socket.gethostname())
+    logging.info(f"Starting server at {host_ip}:50060")
+    logging.info(mycli.mi('event_subscribe', ['E_UA_SESSION', f'udp:{host_ip}:50060']))
     
     event_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    event_socket.bind(('localhost', 50060))
+    event_socket.bind((host_ip, 50060))
     
     loop = asyncio.get_running_loop()
     stop = loop.create_future()
@@ -103,9 +105,7 @@ async def main():
         signal.SIGINT,
         lambda: asyncio.create_task(shutdown(signal.SIGINT, loop, event_socket)),
     )
-    
-    event_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    event_socket.bind(('localhost', 50060))
+
     loop.add_reader(event_socket.fileno(), udp_handler, event_socket)
 
     try:

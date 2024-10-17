@@ -2,7 +2,7 @@ import os
 import socket
 import asyncio
 from aiortc.sdp import SessionDescription
-from deepgram.utils import verboselogs
+from aiortc import RTCRtpCodecParameters
 from opensipscli import cli
 
 from rtp import DecodeRTPpacket
@@ -47,13 +47,23 @@ class Call():
         self.stop_event = asyncio.Event()
         self.stop_event.clear()
 
-        logging.info(sdp)
+        logging.debug(sdp)
+        logging.info(sdp.media[0].rtp.codecs)
 
         for codec in sdp.media[0].rtp.codecs:
             if codec.name.lower() in [ "pcmu", "pcma", "opus" ]:
                 break
         else:
-            raise CodecException("No supported codec found")
+            # try to find based on fmt - default values
+            for pt in sdp.media[0].fmt:
+                if pt in [0, 8]:
+                    mime = f"audio/PCM{'U' if pt == 0 else 'A'}"
+                    codec = RTCRtpCodecParameters(mimeType=mime,
+                                                  clockRate=8000,
+                                                  payloadType=pt)
+                    break
+            else:
+                raise CodecException("No supported codec found")
         
         self.codec = None
         

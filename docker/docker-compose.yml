@@ -7,6 +7,8 @@ services:
     network_mode: host
     env_file:
       - .env
+    volumes:
+      - ../src:/app/src/
   
   opensips:
     container_name: opensips-conv-ai

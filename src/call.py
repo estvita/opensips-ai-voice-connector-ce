@@ -4,6 +4,7 @@ import os
 import socket
 import asyncio
 import logging
+import datetime
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
 from aiortc import RTCRtpCodecParameters
@@ -176,13 +177,18 @@ class Call():  # pylint: disable=too-many-instance-attributes
     async def send_rtp(self):
         """ Sends a RTP packet """
         while not self.stop_event.is_set():
+            last_time = datetime.datetime.now()
             try:
                 rtp_packet = self.rtp.get_nowait()
             except Empty:
                 rtp_packet = self.codec.get_silence()
             self.serversock.sendto(bytes.fromhex(rtp_packet),
                                    (self.client_addr, self.client_port))
-            await asyncio.sleep(float(20 * 0.001))
+            next_time = last_time + datetime.timedelta(milliseconds=20)
+            now = datetime.datetime.now()
+            drift = (next_time - now).total_seconds()
+            if drift > 0:
+                await asyncio.sleep(float(drift))
 
     async def close(self):
         """ Closes the call """

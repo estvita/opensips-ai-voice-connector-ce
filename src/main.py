@@ -101,7 +101,7 @@ async def main():
 
     logging.info("Starting server at %s:%hu", host_ip, port)
     mycli.mi('event_subscribe', ['E_UA_SESSION',
-                                 f'udp:{host_ip}:{port}'])
+                                 f'udp:{host_ip}:{port}'], 2147483647)
 
     loop = asyncio.get_running_loop()
     stop = loop.create_future()

@@ -4,7 +4,7 @@ import os
 import socket
 import asyncio
 import logging
-from queue import Queue
+from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
 from aiortc import RTCRtpCodecParameters
 from opensipscli import cli
@@ -63,7 +63,6 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.serversock.bind((host_ip, 0))
 
-        self.data = asyncio.Queue()
         sdp = self.get_new_sdp(sdp, host_ip)
 
         call_ref = self
@@ -72,7 +71,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.buf = []
         sentences = self.buf
 
-        async def on_message(self, result, **_):
+        async def on_message(__, result, **_):
             sentence = result.channel.alternatives[0].transcript
             if len(sentence) == 0:
                 return
@@ -81,18 +80,16 @@ class Call():  # pylint: disable=too-many-instance-attributes
             sentences.append(sentence)
             if not sentence.endswith(("?", ".", "!")):
                 return
-            try:
-                phrase = " ".join(sentences)
-                logging.info("Speaker: %s", phrase)
-                response = await self.call.get_response(phrase)
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logging.info(e)
-                return
+            phrase = " ".join(sentences)
+            logging.info("Speaker: %s", phrase)
+            asyncio.create_task(call_ref.handle_phrase(phrase))
             sentences.clear()
-            await call_ref.speak(response)
 
-        self.deepgram = deepgram.new_call(b2b_key, self.codec, on_message)
-        asyncio.create_task(self.start_connection())
+        self.deepgram = deepgram.new_call(self.codec, None, on_message)
+        asyncio.create_task(self.start_api())
+
+        if self.welcome_msg:
+            asyncio.create_task(self.speak(self.welcome_msg))
 
         self.cli.mi('ua_session_reply', {'key': b2b_key,
                                          'method': 'INVITE',
@@ -100,11 +97,16 @@ class Call():  # pylint: disable=too-many-instance-attributes
                                          'reason': 'OK',
                                          'body': str(sdp)})
 
+    async def handle_phrase(self, phrase):
+        """ handles the response of a phrase """
+        response = await chatgpt.handle(self.b2b_key, phrase)
+        asyncio.create_task(self.deepgram.speak(response))
+
     async def speak(self, phrase):
         """ Speaks the phrase received as parameter """
-        self.deepgram.speak(phrase)
+        await self.deepgram.speak(phrase)
 
-    async def start_connection(self):
+    async def start_api(self):
         """ Starts a Depgram connection """
         logging.info("Starting connection for call %s", self.b2b_key)
 
@@ -115,8 +117,6 @@ class Call():  # pylint: disable=too-many-instance-attributes
         loop = asyncio.get_running_loop()
         loop.add_reader(self.serversock.fileno(), self.read_rtp)
         asyncio.create_task(self.send_rtp())
-
-        return self.serversock
 
     def get_codec(self, sdp):
         """ Returns the codec to be used """
@@ -168,30 +168,21 @@ class Call():  # pylint: disable=too-many-instance-attributes
         data = self.serversock.recv(1024)
         try:
             packet = decode_rtp_packet(data.hex())
-            self.data.put_nowait(bytes.fromhex(packet['payload']))
-            asyncio.create_task(self.send_audio())
+            audio = bytes.fromhex(packet['payload'])
+            asyncio.create_task(self.deepgram.send(audio))
         except ValueError:
             pass
-        if self.welcome_msg:
-            phrase = self.welcome_msg
-            self.welcome_msg = None
-            asyncio.create_task(self.speak(phrase))
 
     async def send_rtp(self):
         """ Sends a RTP packet """
         while not self.stop_event.is_set():
             try:
                 rtp_packet = self.rtp.get_nowait()
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Empty:
                 rtp_packet = self.codec.get_silence()
             self.serversock.sendto(bytes.fromhex(rtp_packet),
                                    (self.client_addr, self.client_port))
             await asyncio.sleep(float(20 * 0.001))
-
-    async def send_audio(self):
-        """ Sends an audio packet """
-        audio = await self.data.get()
-        await self.deepgram.send(audio)
 
     async def close(self):
         """ Closes the call """

@@ -10,19 +10,21 @@ from deepgram import (  # pylint: disable=import-error
     LiveOptions,
     SpeakOptions,
     DeepgramClient,
-    LiveTranscriptionEvents
+    SpeakWebSocketEvents,
+    LiveTranscriptionEvents,
 )
 
 
 class DeepgramSession:
     """ handles a Deepgram session """
 
-    def __init__(self, client, key, codec, handler):
+    def __init__(self, client, codec, shandler, thandler):
         self.client = client
-        self.key = key
         self.codec = codec
-        self.ws = self.client.listen.asyncwebsocket.v("1")
-        self.ws.on(LiveTranscriptionEvents.Transcript, handler)
+        self.stt = self.client.listen.asyncwebsocket.v("1")
+        self.tts = self.client.speak.asyncwebsocket.v("1")
+        self.stt.on(LiveTranscriptionEvents.Transcript, thandler)
+        self.tts.on(SpeakWebSocketEvents.AudioData, shandler)
         self.transcription_options = LiveOptions(
                 model="nova-2",
                 language="en-US",
@@ -35,8 +37,8 @@ class DeepgramSession:
         self.speak_options = SpeakOptions(
             model="aura-asteria-en",
             encoding=self.codec.name,
-            container=self.codec.container,
             bit_rate=self.codec.bitrate,
+            container=self.codec.container,
             sample_rate=self.codec.sample_rate)
 
     async def speak(self, phrase):
@@ -46,16 +48,19 @@ class DeepgramSession:
         asyncio.create_task(self.codec.process_response(response))
 
     async def start(self):
-        """ Starts a transcribe session """
-        return self.ws.start(self.transcription_options)
+        """ Returns start coroutines for both TTS and STT """
+        #ret = await asyncio.gather(self.stt.start(self.transcription_options),
+        #                           self.tts.start(self.speak_options))
+        #return (ret[0] and ret[1])
+        return await asyncio.gather(self.stt.start(self.transcription_options))
 
     async def send(self, audio):
         """ Sends an audio packet """
-        return self.ws.send(audio)
+        await self.stt.send(audio)
 
     async def finish(self):
         """ Terminates a session """
-        return self.ws.finish()
+        await asyncio.gather(self.stt.finish(), self.tts.finish())
 
 
 class Deepgram:
@@ -64,9 +69,9 @@ class Deepgram:
     def __init__(self, key):
         self.client = DeepgramClient(key)
 
-    def new_call(self, key, codec, handler):
+    def new_call(self, codec, shandler, thandler):
         """ adds a transcribe handler """
-        return DeepgramSession(self.client, key, codec, handler)
+        return DeepgramSession(self.client, codec, shandler, thandler)
 
     def close(self):
         """ closes the Deepgram session """

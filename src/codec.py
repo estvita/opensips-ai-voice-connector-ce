@@ -134,14 +134,14 @@ class G711(GenericCodec):
         super().__init__(params, queue)
 
         self.sample_rate = 8000
-        self.bitrate = 64000
+        self.bitrate = None
         self.container = 'none'
         self.name = "g711"
 
         self.ts_increment = self.sample_rate // 50  # 20ms
 
     async def process_response(self, response):
-        chunk_size = ((8000 * 8 * 20) // 1000) // 8
+        chunk_size = self.get_payload_len()
         buffer = bytearray()
         async for data in response.aiter_bytes():
             buffer.extend(data)
@@ -164,7 +164,7 @@ class G711(GenericCodec):
 
     def get_payload_len(self):
         """ Returns payload length """
-        return ((self.sample_rate * 20 * 8) // 1000) // 8
+        return ((self.sample_rate * 8 * 20) // 1000) // 8
 
 
 class PCMU(G711):
@@ -184,6 +184,7 @@ class PCMA(G711):
         self.name = 'alaw'
 
     def get_silence(self):
+        print(self.get_payload_len)
         return self.make_packet(b'\xD5' * self.get_payload_len())
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

@@ -23,7 +23,7 @@ class ChatGPT:
         """ Deletes a ChatGPT context """
         self.contexts.pop(b2b_key)
 
-    async def send_message(self, b2b_key, message):
+    async def handle(self, b2b_key, message):
         """ Sends a ChatGPT message """
         self.contexts[b2b_key].append({"role": "user", "content": message})
 

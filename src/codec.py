@@ -1,8 +1,12 @@
-import random
-from rtp import GenerateRTPpacket
-from deepgram import LiveOptions, SpeakOptions
+""" Module that implements a generic codec """
 
-class GenericCodec:
+from abc import ABC, abstractmethod
+import random
+from rtp import generate_rtp_packet
+
+
+class GenericCodec(ABC):
+    """ Generic Abstract class for a codec """
     def __init__(self, params, queue):
         self.marker = 1
         self.params = params
@@ -13,32 +17,17 @@ class GenericCodec:
         self.ssrc = random.randint(0, 2**31)
         self.payload_type = params.payloadType
 
-    def process_response(self, response):
-        pass
+    @abstractmethod
+    async def process_response(self, response):
+        """ Processes the response from speach engine """
 
-    def parse_params(self):
-        pass
-
-    def make_live_options(self):
-        return LiveOptions(
-            model="nova-2",
-            language="en-US",
-            punctuate=True,
-            filler_words=True,
-            interim_results=True,
-            utterance_end_ms="1000"
-        )
-
-    def make_speak_options(self):
-        return SpeakOptions(
-            model="aura-asteria-en"
-        )
-
+    @abstractmethod
     def get_silence(self):
-        pass
+        """ Returns a silence packet """
 
     def make_packet(self, payload):
-        packet =  GenerateRTPpacket({
+        """ Create a RTP packet """
+        packet = generate_rtp_packet({
                 'version': 2,
                 'padding': 0,
                 'extension': 0,
@@ -55,6 +44,7 @@ class GenericCodec:
 
 
 class Opus(GenericCodec):
+    """ Opus codec handling """
     def __init__(self, params, queue):
         super().__init__(params, queue)
 
@@ -79,11 +69,11 @@ class Opus(GenericCodec):
                         try:
                             page = pages.pop(0)
                             self.parse_page(page)
-                        except:
+                        finally:
                             pass
                         pages.append(data)
                     break
-                
+
                 if not data.startswith(b'OggS'):
                     if len(pages) > 0:
                         pages[-1] += data[:pos]
@@ -91,7 +81,7 @@ class Opus(GenericCodec):
                     try:
                         page = pages.pop(0)
                         self.parse_page(page)
-                    except:
+                    finally:
                         pass
                     pages.append(data[:pos])
 
@@ -99,11 +89,12 @@ class Opus(GenericCodec):
 
         for page in pages:
             self.parse_page(page)
-    
+
     def parse_page(self, page):
+        """ Parse Ogg page """
         if not page.startswith(b'OggS'):
             return
-        
+
         header = page[:27]
         # capture_pattern = header[:4]
         # version = header[4]
@@ -117,42 +108,35 @@ class Opus(GenericCodec):
 
         for i in range(page_segments):
             segment_len = segments_lens[i]
-            segment = page[27 + page_segments + sum(segments_lens[:i]):27 + page_segments + sum(segments_lens[:i]) + segment_len]
+            segment = page[27 + page_segments +
+                           sum(segments_lens[:i]):27 +
+                           page_segments +
+                           sum(segments_lens[:i]) +
+                           segment_len]
             if i == 0 and segment.startswith(b'OpusHead'):
                 return
             if i == 0 and segment.startswith(b'OpusTags'):
                 return
-            
+
             rtp_packet = self.make_packet(segment)
             self.queue.put_nowait(rtp_packet)
 
             self.sequence_number += 1
             self.timestamp += self.ts_increment
 
-    def make_live_options(self):
-        options = super().make_live_options()
-        options.encoding = self.name
-        options.sample_rate = self.sample_rate
-        return options
-
-    def make_speak_options(self):
-        options = super().make_speak_options()
-        options.encoding = self.name
-        options.container = self.container
-        options.bit_rate = self.bitrate
-        return options
-    
     def get_silence(self):
         return self.make_packet(b'\xf8\xff\xfe')
 
 
 class G711(GenericCodec):
+    """ Generic G711 Codec handling """
     def __init__(self, params, queue):
         super().__init__(params, queue)
 
         self.sample_rate = 8000
         self.bitrate = 64000
         self.container = 'none'
+        self.name = "g711"
 
         self.ts_increment = self.sample_rate // 50  # 20ms
 
@@ -178,35 +162,28 @@ class G711(GenericCodec):
             rtp_packet = self.make_packet(payload)
             self.queue.put_nowait(rtp_packet)
 
-    def make_live_options(self):
-        options = super().make_live_options()
-        options.encoding = self.name
-        options.sample_rate = self.sample_rate
-        return options
-    
-    def make_speak_options(self):
-        options = super().make_speak_options()
-        options.encoding = self.name
-        options.container = self.container
-        options.sample_rate = self.sample_rate
-        return options
+    def get_payload_len(self):
+        """ Returns payload length """
+        return ((self.sample_rate * 20 * 8) // 1000) // 8
 
 
 class PCMU(G711):
+    """ PCMU codec handling """
     def __init__(self, params, queue):
         super().__init__(params, queue)
         self.name = 'mulaw'
-    
-    def get_silence(self):
-        payload_len = ((self.sample_rate * 20 * 8) // 1000) // 8
-        return self.make_packet(b'\xFF' * payload_len)
 
-    
+    def get_silence(self):
+        return self.make_packet(b'\xFF' * self.get_payload_len())
+
+
 class PCMA(G711):
+    """ PCMA codec handling """
     def __init__(self, params, queue):
         super().__init__(params, queue)
         self.name = 'alaw'
-    
+
     def get_silence(self):
-        payload_len = ((self.sample_rate * 20 * 8) // 1000) // 8
-        return self.make_packet(b'\xD5' * payload_len)
+        return self.make_packet(b'\xD5' * self.get_payload_len())
+
+# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

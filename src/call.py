@@ -1,41 +1,52 @@
+""" Handles the a SIP call """
+
 import os
 import socket
 import asyncio
+import logging
+from queue import Queue
 from aiortc.sdp import SessionDescription
 from aiortc import RTCRtpCodecParameters
 from opensipscli import cli
 
-from rtp import DecodeRTPpacket
+from rtp import decode_rtp_packet
 from codec import Opus, PCMA, PCMU
+from chatgpt_api import ChatGPT
+from deepgram_api import Deepgram
 
-from queue import Queue
-from chatgpt import ChatGPT
-import logging
-
-from deepgram import (
-    DeepgramClient,
-    LiveTranscriptionEvents
-)
 
 class CodecException(Exception):
     """ Raised when there is a codec mismatch """
 
-class Call():
-    def __init__(self, b2b_key, sdp_str, deepgram: DeepgramClient, cli: cli.OpenSIPSCLI, chatgpt: ChatGPT):
-        host_ip = os.getenv('RTP_IP', socket.gethostbyname(socket.gethostname()))
+
+API_KEY = os.getenv("DEEPGRAM_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", "gpt-4o")
+
+deepgram = Deepgram(API_KEY)
+chatgpt = ChatGPT(OPENAI_API_KEY, OPENAI_API_MODEL)
+
+
+class Call():  # pylint: disable=too-many-instance-attributes
+    """ Class that handles a call """
+    def __init__(self,  # pylint: disable=too-many-arguments
+                 b2b_key, sdp_str,
+                 c: cli.OpenSIPSCLI):
+        try:
+            hostname = socket.gethostbyname(socket.gethostname())
+        except socket.gaierror:  # unknown hostname
+            hostname = "127.0.0.1"
+        host_ip = os.getenv('RTP_IP', hostname)
         self.welcome_msg = os.getenv('WELCOME_MSG', None)
 
         self.b2b_key = b2b_key
-        self.cli = cli
-
-        self.chatgpt = chatgpt
-        self.deepgram = deepgram
+        self.cli = c
 
         # remove rtcp line, since the parser throws an error on it
-        sdp_str = "\n".join([ l for l in sdp_str.split("\n") if not l.startswith("a=rtcp:")])
+        sdp_str = "\n".join([line for line in sdp_str.split("\n")
+                             if not line.startswith("a=rtcp:")])
 
         sdp = SessionDescription.parse(sdp_str)
-        #sdp.media[0].direction = 'recvonly'
 
         if sdp.media[0].host:
             self.client_addr = sdp.media[0].host
@@ -47,11 +58,73 @@ class Call():
         self.stop_event = asyncio.Event()
         self.stop_event.clear()
 
+        self.codec = self.get_codec(sdp)
+
+        self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.serversock.bind((host_ip, 0))
+
+        self.data = asyncio.Queue()
+        sdp = self.get_new_sdp(sdp, host_ip)
+
+        call_ref = self
+        chatgpt.create_call(b2b_key)
+
+        self.buf = []
+        sentences = self.buf
+
+        async def on_message(self, result, **_):
+            sentence = result.channel.alternatives[0].transcript
+            if len(sentence) == 0:
+                return
+            if not result.is_final:
+                return
+            sentences.append(sentence)
+            if not sentence.endswith(("?", ".", "!")):
+                return
+            try:
+                phrase = " ".join(sentences)
+                logging.info("Speaker: %s", phrase)
+                response = await self.call.get_response(phrase)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logging.info(e)
+                return
+            sentences.clear()
+            await call_ref.speak(response)
+
+        self.deepgram = deepgram.new_call(b2b_key, self.codec, on_message)
+        asyncio.create_task(self.start_connection())
+
+        self.cli.mi('ua_session_reply', {'key': b2b_key,
+                                         'method': 'INVITE',
+                                         'code': 200,
+                                         'reason': 'OK',
+                                         'body': str(sdp)})
+
+    async def speak(self, phrase):
+        """ Speaks the phrase received as parameter """
+        self.deepgram.speak(phrase)
+
+    async def start_connection(self):
+        """ Starts a Depgram connection """
+        logging.info("Starting connection for call %s", self.b2b_key)
+
+        if await self.deepgram.start() is False:
+            logging.info("Failed to start connection")
+            return
+
+        loop = asyncio.get_running_loop()
+        loop.add_reader(self.serversock.fileno(), self.read_rtp)
+        asyncio.create_task(self.send_rtp())
+
+        return self.serversock
+
+    def get_codec(self, sdp):
+        """ Returns the codec to be used """
         logging.debug(sdp)
-        logging.info(sdp.media[0].rtp.codecs)
+        logging.debug(sdp.media[0].rtp.codecs)
 
         for codec in sdp.media[0].rtp.codecs:
-            if codec.name.lower() in [ "pcmu", "pcma", "opus" ]:
+            if codec.name.lower() in ["pcmu", "pcma", "opus"]:
                 break
         else:
             # try to find based on fmt - default values
@@ -64,26 +137,17 @@ class Call():
                     break
             else:
                 raise CodecException("No supported codec found")
-        
-        self.codec = None
-        
+
         codec_name = codec.name.lower()
         if codec_name == "pcmu":
-            self.codec = PCMU(params=codec, queue=self.rtp)
-        elif codec_name == "pcma":
-            self.codec = PCMA(params=codec, queue=self.rtp)
-        elif codec_name == "opus":
-            self.codec = Opus(params=codec, queue=self.rtp)
+            return PCMU(params=codec, queue=self.rtp)
+        if codec_name == "pcma":
+            return PCMA(params=codec, queue=self.rtp)
+        if codec_name == "opus":
+            return Opus(params=codec, queue=self.rtp)
 
-        self.transcription_options = self.codec.make_live_options()
-
-        # Remove all other codecs
-
-        self.speak_options = self.codec.make_speak_options()
-
-        self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.serversock.bind((host_ip, 0))
-
+    def get_new_sdp(self, sdp, host_ip):
+        """ Gets a new SDP to be sent back in 200 OK """
         sdp.origin = f"{sdp.origin.rsplit(' ', 1)[0]} {host_ip}"
         sdp.media[0].port = self.serversock.getsockname()[1]
         if sdp.host:
@@ -91,90 +155,52 @@ class Call():
         if sdp.media[0].host:
             sdp.media[0].host = host_ip
 
-        # update SDP to return only chosen codec, as we do not accept anything else
+        # update SDP to return only chosen codec
+        # as we do not accept anything else
+        # Remove all other codecs
         sdp.media[0].rtp.codecs = [self.codec.params]
         sdp.media[0].fmt = [self.codec.payload_type]
 
-        self.data = asyncio.Queue()
+        return sdp
 
-        self.dg_connection = deepgram.listen.asyncwebsocket.v("1")
-
-        call_ref = self
-        chatgpt.create_call(b2b_key)
-
-
-        self.buf = []
-        sentences = self.buf
-
-        async def on_message(self, result, **kwargs):
-            sentence = result.channel.alternatives[0].transcript
-            if len(sentence) == 0:
-                return
-            if not result.is_final:
-                return
-            sentences.append(sentence)
-            if not sentence.endswith(("?", ".", "!")):
-                return
-            try:
-                phrase = " ".join([s for s in sentences])
-                logging.info(f"Speaker: {phrase}")
-                assistant_response = await chatgpt.send_message(b2b_key, phrase)
-            except Exception as e:
-                logging.info(e)
-                return
-            sentences.clear()
-            await call_ref.speak(assistant_response)
-
-        self.dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
-        asyncio.create_task(self.start_connection())
-
-        logging.info(cli.mi('ua_session_reply', {'key': b2b_key, 'method': 'INVITE', 'code': 200, 'reason': 'OK', 'body': str(sdp)}))
-
-    async def speak(self, phrase):
-        response = await self.deepgram.speak.asyncrest.v("1").stream_raw({"text": phrase}, self.speak_options)
-        asyncio.create_task(self.codec.process_response(response))
-    
-    async def start_connection(self):
-        logging.info(f"Starting connection for call {self.b2b_key}")
-
-        if await self.dg_connection.start(self.transcription_options) is False:
-            logging.info("Failed to start connection")
-            return
-
-        loop = asyncio.get_running_loop()
-        loop.add_reader(self.serversock.fileno(), self.read_rtp)
-        asyncio.create_task(self.send_rtp())
-
-        return self.serversock
-    
     def read_rtp(self):
+        """ Reads a RTP packet """
         data = self.serversock.recv(1024)
-        packet = DecodeRTPpacket(data.hex())
-        self.data.put_nowait(bytes.fromhex(packet['payload']))
-        asyncio.create_task(self.send_audio())
+        try:
+            packet = decode_rtp_packet(data.hex())
+            self.data.put_nowait(bytes.fromhex(packet['payload']))
+            asyncio.create_task(self.send_audio())
+        except ValueError:
+            pass
         if self.welcome_msg:
             phrase = self.welcome_msg
             self.welcome_msg = None
             asyncio.create_task(self.speak(phrase))
 
     async def send_rtp(self):
+        """ Sends a RTP packet """
         while not self.stop_event.is_set():
             try:
                 rtp_packet = self.rtp.get_nowait()
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 rtp_packet = self.codec.get_silence()
-            self.serversock.sendto(bytes.fromhex(rtp_packet), (self.client_addr, self.client_port))
+            self.serversock.sendto(bytes.fromhex(rtp_packet),
+                                   (self.client_addr, self.client_port))
             await asyncio.sleep(float(20 * 0.001))
 
     async def send_audio(self):
+        """ Sends an audio packet """
         audio = await self.data.get()
-        await self.dg_connection.send(audio)
+        await self.deepgram.send(audio)
 
     async def close(self):
-        logging.info(f"Call {self.b2b_key} closing")
-        self.chatgpt.delete_call(self.b2b_key)
+        """ Closes the call """
+        logging.info("Call %s closing", self.b2b_key)
+        chatgpt.delete_call(self.b2b_key)
         self.stop_event.set()
         loop = asyncio.get_running_loop()
         loop.remove_reader(self.serversock.fileno())
         self.serversock.close()
-        await self.dg_connection.finish()
+        await self.deepgram.finish()
+
+# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

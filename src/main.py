@@ -1,33 +1,24 @@
-from opensipscli import args, cli
-import asyncio
-import signal
-import json
-import socket
+""" Main module that starts the Deepgram AI integration """
+
 import os
-from dotenv import load_dotenv
-from deepgram.utils import verboselogs
-
-from deepgram import DeepgramClient
-
-from call import Call, CodecException
-
-from chatgpt import ChatGPT
-
+import json
+import signal
+import socket
+import asyncio
 import logging
 
-load_dotenv()
+from opensipscli import args, cli
+from call import Call, CodecException
 
-API_KEY = os.getenv("DEEPGRAM_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 MI_IP = os.getenv("MI_IP", default='127.0.0.1')
-MI_PORT = os.getenv("MI_PORT", default=8080)
+MI_PORT = int(os.getenv("MI_PORT", default='8080'))
 
 myargs = args.OpenSIPSCLIArgs(log_level='WARNING',
                               communication_type='datagram',
                               datagram_ip=MI_IP,
                               datagram_port=MI_PORT)
-                              
+
 mycli = cli.OpenSIPSCLI(myargs)
 calls = {}
 
@@ -36,10 +27,9 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
 )
 
-deepgram: DeepgramClient = DeepgramClient(API_KEY)
-chatgpt = ChatGPT(OPENAI_API_KEY, "gpt-4o")
 
 def udp_handler(sock):
+    """ UDP handler of events received """
     message = sock.recv(4096)
     data = json.loads(message)
 
@@ -62,28 +52,36 @@ def udp_handler(sock):
         sdp_str = params['body']
 
         try:
-            new_call = Call(key, sdp_str, deepgram, mycli, chatgpt)
+            new_call = Call(key, sdp_str, mycli)
         except CodecException:
-            mycli.mi('ua_session_reply', {'key':key, 'method': method,
-                                          'code': 488, 'reason': 'Not Acceptable Here'})
+            mycli.mi('ua_session_reply', {'key': key,
+                                          'method': method,
+                                          'code': 488,
+                                          'reason': 'Not Acceptable Here'})
             return
-        except Exception as e:
-            logging.exception(f"Error creating call: {e}")
-            mycli.mi('ua_session_reply', {'key':key, 'method': method,
-                                          'code': 500, 'reason': 'Server Internal Error'})
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logging.exception("Error creating call %s", e)
+            mycli.mi('ua_session_reply', {'key': key,
+                                          'method': method,
+                                          'code': 500,
+                                          'reason':
+                                          'Server Internal Error'})
             return
 
         calls[key] = new_call
-    
+
     if method == 'BYE':
         asyncio.create_task(calls[key].close())
         calls.pop(key, None)
 
-async def shutdown(signal, loop, event_socket):
-    logging.info(f"Received exit signal {signal.name}...")
+
+async def shutdown(s, loop, event_socket):
+    """ Called when the program is shutting down """
+    logging.info("Received exit signal %s...", s)
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-    [task.cancel() for task in tasks]
-    logging.info(f"Cancelling {len(tasks)} outstanding tasks")
+    for task in tasks:
+        task.cancel()
+    logging.info("Cancelling %d outstanding tasks", len(tasks))
     for call in calls.values():
         await call.close()
     event_socket.close()
@@ -91,28 +89,35 @@ async def shutdown(signal, loop, event_socket):
     loop.stop()
     logging.info("Shutdown complete.")
 
+
 async def main():
+    """ Main function """
     host_ip = os.getenv("EVENT_IP", "127.0.0.1")
-    port = os.getenv("EVENT_PORT", 0)
+    port = int(os.getenv("EVENT_PORT", "0"))
 
     event_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     event_socket.bind((host_ip, port))
     _, port = event_socket.getsockname()
 
-    logging.info(f"Starting server at {host_ip}:{port}")
-    logging.info(mycli.mi('event_subscribe', ['E_UA_SESSION', f'udp:{host_ip}:{port}']))
-    
+    logging.info("Starting server at %s:%hu", host_ip, port)
+    mycli.mi('event_subscribe', ['E_UA_SESSION',
+                                 f'udp:{host_ip}:{port}'])
+
     loop = asyncio.get_running_loop()
     stop = loop.create_future()
 
     loop.add_signal_handler(
         signal.SIGTERM,
-        lambda: asyncio.create_task(shutdown(signal.SIGTERM, loop, event_socket)),
+        lambda: asyncio.create_task(shutdown(signal.SIGTERM,
+                                             loop,
+                                             event_socket)),
     )
 
     loop.add_signal_handler(
         signal.SIGINT,
-        lambda: asyncio.create_task(shutdown(signal.SIGINT, loop, event_socket)),
+        lambda: asyncio.create_task(shutdown(signal.SIGINT,
+                                             loop,
+                                             event_socket)),
     )
 
     loop.add_reader(event_socket.fileno(), udp_handler, event_socket)
@@ -124,3 +129,5 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+
+# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

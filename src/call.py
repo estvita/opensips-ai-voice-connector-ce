@@ -67,7 +67,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         sdp = self.get_new_sdp(sdp, host_ip)
 
         call_ref = self
-        chatgpt.create_call(b2b_key)
+        chatgpt.create_call(b2b_key, self.welcome_msg)
 
         self.buf = []
         sentences = self.buf

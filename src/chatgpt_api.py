@@ -12,10 +12,11 @@ class ChatGPT:
         self.api = AsyncOpenAI(api_key=api_key)
         self.contexts = {}
 
-    def create_call(self, b2b_key):
+    def create_call(self, b2b_key, hint=None):
         """ Creates a ChatGPT context """
         self.contexts[b2b_key] = []
-        hint = "Please answer with simple text messages."
+        if not hint:
+            hint = "Please answer with simple text messages."
         self.contexts[b2b_key].append({"role": "system",
                                        "content": hint})
 

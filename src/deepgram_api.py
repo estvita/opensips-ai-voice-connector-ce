@@ -22,9 +22,9 @@ class DeepgramSession:
         self.client = client
         self.codec = codec
         self.stt = self.client.listen.asyncwebsocket.v("1")
-        self.tts = self.client.speak.asyncwebsocket.v("1")
+        self.tts = self.client.speak.asyncrest.v("1")
         self.stt.on(LiveTranscriptionEvents.Transcript, thandler)
-        self.tts.on(SpeakWebSocketEvents.AudioData, shandler)
+        self.shandler = shandler
         self.transcription_options = LiveOptions(
                 model="nova-2",
                 language="en-US",
@@ -43,16 +43,17 @@ class DeepgramSession:
 
     async def speak(self, phrase):
         """ Speaks the phrase received as parameter """
-        ar = self.client.speak.asyncrest.v("1")
-        response = await ar.stream_raw({"text": phrase}, self.speak_options)
-        asyncio.create_task(self.codec.process_response(response))
+        asyncio.create_task(self.process_speech(phrase))
+
+    async def process_speech(self, phrase):
+        """ Processes the speech received """
+        response = await self.tts.stream_raw({"text": phrase},
+                                             self.speak_options)
+        asyncio.create_task(self.shandler(self, response))
 
     async def start(self):
         """ Returns start coroutines for both TTS and STT """
-        #ret = await asyncio.gather(self.stt.start(self.transcription_options),
-        #                           self.tts.start(self.speak_options))
-        #return (ret[0] and ret[1])
-        return await asyncio.gather(self.stt.start(self.transcription_options))
+        return await self.stt.start(self.transcription_options)
 
     async def send(self, audio):
         """ Sends an audio packet """
@@ -60,7 +61,7 @@ class DeepgramSession:
 
     async def finish(self):
         """ Terminates a session """
-        await asyncio.gather(self.stt.finish(), self.tts.finish())
+        await self.stt.finish()
 
 
 class Deepgram:

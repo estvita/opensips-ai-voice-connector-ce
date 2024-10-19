@@ -1,6 +1,7 @@
 """ Handles the a SIP call """
 
 import os
+import random
 import socket
 import asyncio
 import logging
@@ -10,7 +11,7 @@ from aiortc.sdp import SessionDescription
 from aiortc import RTCRtpCodecParameters
 from opensipscli import cli
 
-from rtp import decode_rtp_packet
+from rtp import decode_rtp_packet, generate_rtp_packet
 from codec import Opus, PCMA, PCMU
 from chatgpt_api import ChatGPT
 from deepgram_api import Deepgram
@@ -58,6 +59,8 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.rtp = Queue()
         self.stop_event = asyncio.Event()
         self.stop_event.clear()
+        # used to serialize the speech events
+        self.speech_lock = asyncio.Lock()
 
         self.codec = self.get_codec(sdp)
 
@@ -72,7 +75,11 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.buf = []
         sentences = self.buf
 
-        async def on_message(__, result, **_):
+        async def on_speech(__, result, **_):
+            async with self.speech_lock:
+                await call_ref.codec.process_response(result, self.rtp)
+
+        async def on_text(__, result, **_):
             sentence = result.channel.alternatives[0].transcript
             if len(sentence) == 0:
                 return
@@ -86,7 +93,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
             asyncio.create_task(call_ref.handle_phrase(phrase))
             sentences.clear()
 
-        self.deepgram = deepgram.new_call(self.codec, None, on_message)
+        self.deepgram = deepgram.new_call(self.codec, on_speech, on_text)
         asyncio.create_task(self.start_api())
 
         if self.welcome_msg:
@@ -141,11 +148,11 @@ class Call():  # pylint: disable=too-many-instance-attributes
 
         codec_name = codec.name.lower()
         if codec_name == "pcmu":
-            return PCMU(params=codec, queue=self.rtp)
+            return PCMU(codec)
         if codec_name == "pcma":
-            return PCMA(params=codec, queue=self.rtp)
+            return PCMA(codec)
         if codec_name == "opus":
-            return Opus(params=codec, queue=self.rtp)
+            return Opus(codec)
 
     def get_new_sdp(self, sdp, host_ip):
         """ Gets a new SDP to be sent back in 200 OK """
@@ -175,16 +182,41 @@ class Call():  # pylint: disable=too-many-instance-attributes
             pass
 
     async def send_rtp(self):
-        """ Sends a RTP packet """
+        """ Sends all RTP packet """
+
+        sequence_number = random.randint(0, 10000)
+        timestamp = random.randint(0, 10000)
+        ssrc = random.randint(0, 2**31)
+        ts_inc = self.codec.ts_increment
+        ptime = self.codec.ptime
+        payload_type = self.codec.payload_type
+        marker = 1
+
         while not self.stop_event.is_set():
             last_time = datetime.datetime.now()
             try:
-                rtp_packet = self.rtp.get_nowait()
+                payload = self.rtp.get_nowait()
             except Empty:
-                rtp_packet = self.codec.get_silence()
+                payload = self.codec.get_silence()
+            rtp_packet = generate_rtp_packet({
+                'version': 2,
+                'padding': 0,
+                'extension': 0,
+                'csi_count': 0,
+                'marker': marker,
+                'payload_type': payload_type,
+                'sequence_number': sequence_number,
+                'timestamp': timestamp,
+                'ssrc': ssrc,
+                'payload': payload.hex()
+            })
+            marker = 0
+            sequence_number += 1
+            timestamp += ts_inc
+
             self.serversock.sendto(bytes.fromhex(rtp_packet),
                                    (self.client_addr, self.client_port))
-            next_time = last_time + datetime.timedelta(milliseconds=20)
+            next_time = last_time + datetime.timedelta(milliseconds=ptime)
             now = datetime.datetime.now()
             drift = (next_time - now).total_seconds()
             if drift > 0:

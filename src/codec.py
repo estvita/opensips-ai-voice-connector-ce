@@ -1,61 +1,38 @@
 """ Module that implements a generic codec """
 
 from abc import ABC, abstractmethod
-import random
-from rtp import generate_rtp_packet
+from opus import OggOpus
 
 
 class GenericCodec(ABC):
     """ Generic Abstract class for a codec """
-    def __init__(self, params, queue):
-        self.marker = 1
+    def __init__(self, params, ptime=20):
         self.params = params
-        self.queue = queue
-
-        self.sequence_number = random.randint(0, 10000)
-        self.timestamp = random.randint(0, 10000)
-        self.ssrc = random.randint(0, 2**31)
+        self.ptime = ptime
         self.payload_type = params.payloadType
+        self.sample_rate = params.clockRate
+        self.ts_increment = int(self.sample_rate // (1000 / ptime))
 
     @abstractmethod
-    async def process_response(self, response):
+    async def process_response(self, response, queue):
         """ Processes the response from speach engine """
 
     @abstractmethod
     def get_silence(self):
         """ Returns a silence packet """
 
-    def make_packet(self, payload):
-        """ Create a RTP packet """
-        packet = generate_rtp_packet({
-                'version': 2,
-                'padding': 0,
-                'extension': 0,
-                'csi_count': 0,
-                'marker': self.marker,
-                'payload_type': self.payload_type,
-                'sequence_number': self.sequence_number,
-                'timestamp': self.timestamp,
-                'ssrc': self.ssrc,
-                'payload': payload.hex()
-            })
-        self.marker = 0
-        return packet
-
 
 class Opus(GenericCodec):
     """ Opus codec handling """
-    def __init__(self, params, queue):
-        super().__init__(params, queue)
+    def __init__(self, params):
+        super().__init__(params)
 
         self.name = 'opus'
-        self.sample_rate = 48000
+        self.sample_rate = None
         self.bitrate = 96000
         self.container = 'ogg'
 
-        self.ts_increment = self.sample_rate // 50  # 20ms
-
-    async def process_response(self, response):
+    async def process_response(self, response, queue):
         pages = []
         async for data in response.aiter_bytes():
             start = 0
@@ -68,7 +45,7 @@ class Opus(GenericCodec):
                     else:
                         try:
                             page = pages.pop(0)
-                            self.parse_page(page)
+                            self.parse_page(page, queue)
                         finally:
                             pass
                         pages.append(data)
@@ -80,7 +57,7 @@ class Opus(GenericCodec):
                 else:
                     try:
                         page = pages.pop(0)
-                        self.parse_page(page)
+                        self.parse_page(page, queue)
                     finally:
                         pass
                     pages.append(data[:pos])
@@ -88,9 +65,9 @@ class Opus(GenericCodec):
                 data = data[pos:]
 
         for page in pages:
-            self.parse_page(page)
+            self.parse_page(page, queue)
 
-    def parse_page(self, page):
+    def parse_page(self, page, queue):
         """ Parse Ogg page """
         if not page.startswith(b'OggS'):
             return
@@ -118,49 +95,45 @@ class Opus(GenericCodec):
             if i == 0 and segment.startswith(b'OpusTags'):
                 return
 
-            rtp_packet = self.make_packet(segment)
-            self.queue.put_nowait(rtp_packet)
-
-            self.sequence_number += 1
-            self.timestamp += self.ts_increment
+            queue.put_nowait(rtp_packet)
 
     def get_silence(self):
-        return self.make_packet(b'\xf8\xff\xfe')
+        return b'\xf8\xff\xfe'
 
 
 class G711(GenericCodec):
     """ Generic G711 Codec handling """
-    def __init__(self, params, queue):
-        super().__init__(params, queue)
+    def __init__(self, params):
+        super().__init__(params)
 
         self.sample_rate = 8000
         self.bitrate = None
         self.container = 'none'
         self.name = "g711"
 
-        self.ts_increment = self.sample_rate // 50  # 20ms
-
-    async def process_response(self, response):
+    async def process_response(self, response, queue):
         chunk_size = self.get_payload_len()
         buffer = bytearray()
         async for data in response.aiter_bytes():
             buffer.extend(data)
-            while len(buffer) >= chunk_size:
-                chunk = buffer[:chunk_size]
+            while len(buffer) > 0:
+                payload = buffer[:chunk_size]
                 buffer = buffer[chunk_size:]
 
-                buffer_size = len(chunk)
-                if buffer_size > 0:
-                    payload = chunk[:buffer_size]
-                    rtp_packet = self.make_packet(payload)
-                    self.sequence_number += 1
-                    self.timestamp += self.ts_increment
-                    self.queue.put_nowait(rtp_packet)
+                if len(payload) == 0:
+                    break
+                if len(payload) < chunk_size:
+                    # fill with silence
+                    remain = chunk_size - len(payload)
+                    payload = payload + self.get_silence_byte() * remain
+                queue.put_nowait(payload)
 
-        if len(buffer) > 0:
-            payload = buffer
-            rtp_packet = self.make_packet(payload)
-            self.queue.put_nowait(rtp_packet)
+    def get_silence(self):
+        return self.get_silence_byte() * self.get_payload_len()
+
+    def get_silence_byte(self):
+        """ Returns the silence byte for g711 codec """
+        return b'\xFF'
 
     def get_payload_len(self):
         """ Returns payload length """
@@ -169,22 +142,21 @@ class G711(GenericCodec):
 
 class PCMU(G711):
     """ PCMU codec handling """
-    def __init__(self, params, queue):
-        super().__init__(params, queue)
+    def __init__(self, params):
+        super().__init__(params)
         self.name = 'mulaw'
 
-    def get_silence(self):
-        return self.make_packet(b'\xFF' * self.get_payload_len())
+    def get_silence_byte(self):
+        return b'\xFF'
 
 
 class PCMA(G711):
     """ PCMA codec handling """
-    def __init__(self, params, queue):
-        super().__init__(params, queue)
+    def __init__(self, params):
+        super().__init__(params)
         self.name = 'alaw'
 
     def get_silence(self):
-        print(self.get_payload_len)
-        return self.make_packet(b'\xD5' * self.get_payload_len())
+        return b'\xD5'
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

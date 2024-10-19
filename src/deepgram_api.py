@@ -34,12 +34,19 @@ class DeepgramSession:
                 utterance_end_ms="1000",
                 encoding=self.codec.name,
                 sample_rate=self.codec.sample_rate)
-        self.speak_options = SpeakOptions(
-            model="aura-asteria-en",
-            encoding=self.codec.name,
-            bit_rate=self.codec.bitrate,
-            container=self.codec.container,
-            sample_rate=self.codec.sample_rate)
+        # don't use sample_rate if we have a bitrate
+        if self.codec.bitrate:
+            self.speak_options = SpeakOptions(
+                model="aura-asteria-en",
+                encoding=self.codec.name,
+                bit_rate=self.codec.bitrate,
+                container=self.codec.container)
+        else:
+            self.speak_options = SpeakOptions(
+                model="aura-asteria-en",
+                encoding=self.codec.name,
+                sample_rate=self.codec.sample_rate,
+                container=self.codec.container)
 
     async def speak(self, phrase):
         """ Speaks the phrase received as parameter """

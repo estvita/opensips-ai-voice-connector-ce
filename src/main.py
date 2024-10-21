@@ -90,6 +90,13 @@ async def shutdown(s, loop, event_socket):
     logging.info("Shutdown complete.")
 
 
+async def reregister(sock):
+    """ Re-Registers a socket to OpenSIPS """
+    while True:
+        mycli.mi('event_subscribe', ['E_UA_SESSION', sock])
+        await asyncio.sleep(3600 - 30)
+
+
 async def main():
     """ Main function """
     host_ip = os.getenv("EVENT_IP", "127.0.0.1")
@@ -100,8 +107,7 @@ async def main():
     _, port = event_socket.getsockname()
 
     logging.info("Starting server at %s:%hu", host_ip, port)
-    mycli.mi('event_subscribe', ['E_UA_SESSION',
-                                 f'udp:{host_ip}:{port}'], 2147483647)
+    sock = f'udp:{host_ip}:{port}'
 
     loop = asyncio.get_running_loop()
     stop = loop.create_future()
@@ -119,6 +125,7 @@ async def main():
                                              loop,
                                              event_socket)),
     )
+    loop.create_task(reregister(sock))
 
     loop.add_reader(event_socket.fileno(), udp_handler, event_socket)
 

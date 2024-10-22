@@ -22,7 +22,7 @@ def get_ai_flavor(params):
                 if line.startswith("To:")]
     if len(to_lines) == 0:
         return flavor
-    to = to_lines[0].split(":", 1)[1]
+    to = to_lines[0].split(":", 1)[1].strip()
     uri_re = re.compile(
         r'(?P<scheme>\w+):'
         + r'(?:(?P<user>[\w\.+*]+):?(?P<password>[\w\.]+)?@)?'

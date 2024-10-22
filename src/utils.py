@@ -7,14 +7,13 @@ Module that provides helper functions for AI
 import re
 from deepgram_api import Deepgram
 from openai_api import OpenAI
-
-FLAVORS = {"openai": OpenAI,
-           "deepgram": Deepgram}
+FLAVORS = {"deepgram": Deepgram,
+           "openai": OpenAI}
 
 
 def get_ai_flavor(params):
     """ Returns the AI flavor to be used """
-    flavor = list(FLAVORS.keys())[-1]
+    flavor = list(FLAVORS.keys())[0]
     if 'headers' not in params:
         return flavor
 
@@ -26,7 +25,7 @@ def get_ai_flavor(params):
     to = to_lines[0].split(":", 1)[1]
     uri_re = re.compile(
         r'(?P<scheme>\w+):'
-        + r'(?:(?P<user>[\w\.]+):?(?P<password>[\w\.]+)?@)?'
+        + r'(?:(?P<user>[\w\.+*]+):?(?P<password>[\w\.]+)?@)?'
         + r'\[?(?P<host>'
         + r'(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|'
         + r'(?:(?:[0-9a-fA-F]{1,4}):){7}[0-9a-fA-F]{1,4}|'

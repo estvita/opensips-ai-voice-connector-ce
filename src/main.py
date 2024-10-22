@@ -9,6 +9,7 @@ import logging
 
 from opensipscli import args, cli
 from call import Call, CodecException
+from utils import get_ai_flavor
 
 
 MI_IP = os.getenv("MI_IP", default='127.0.0.1')
@@ -52,7 +53,7 @@ def udp_handler(sock):
         sdp_str = params['body']
 
         try:
-            new_call = Call(key, sdp_str, mycli)
+            new_call = Call(key, sdp_str, mycli, get_ai_flavor(params))
         except CodecException:
             mycli.mi('ua_session_reply', {'key': key,
                                           'method': method,

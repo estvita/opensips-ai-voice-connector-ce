@@ -4,27 +4,62 @@
 Module that implements Deepgram communcation
 """
 
+import os
+import logging
 import asyncio
 
 from deepgram import (  # pylint: disable=import-error
     LiveOptions,
     SpeakOptions,
     DeepgramClient,
-    SpeakWebSocketEvents,
     LiveTranscriptionEvents,
 )
 
+from ai import AIEngine
+from chatgpt_api import ChatGPT
 
-class DeepgramSession:
-    """ handles a Deepgram session """
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", "gpt-4o")
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+DEEPGRAM_WELCOME = os.getenv('DEEPGRAM_WELCOME_MSG', None)
 
-    def __init__(self, client, codec, shandler, thandler):
-        self.client = client
+chatgpt = ChatGPT(OPENAI_API_KEY, OPENAI_API_MODEL)
+
+
+class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
+
+    """ Implements Deeepgram communication """
+
+    def __init__(self, key, codec, queue):
+        self.deepgram = DeepgramClient(DEEPGRAM_API_KEY)
+        self.b2b_key = key
         self.codec = codec
-        self.stt = self.client.listen.asyncwebsocket.v("1")
-        self.tts = self.client.speak.asyncrest.v("1")
-        self.stt.on(LiveTranscriptionEvents.Transcript, thandler)
-        self.shandler = shandler
+        self.queue = queue
+        self.stt = self.deepgram.listen.asyncwebsocket.v("1")
+        self.tts = self.deepgram.speak.asyncrest.v("1")
+        # used to serialize the speech events
+        self.speech_lock = asyncio.Lock()
+
+        self.buf = []
+        sentences = self.buf
+        call_ref = self
+        chatgpt.create_call(self.b2b_key, DEEPGRAM_WELCOME)
+
+        async def on_text(__, result, **_):
+            sentence = result.channel.alternatives[0].transcript
+            if len(sentence) == 0:
+                return
+            if not result.is_final:
+                return
+            sentences.append(sentence)
+            if not sentence.endswith(("?", ".", "!")):
+                return
+            phrase = " ".join(sentences)
+            logging.info("Speaker: %s", phrase)
+            asyncio.create_task(call_ref.handle_phrase(phrase))
+            sentences.clear()
+
+        self.stt.on(LiveTranscriptionEvents.Transcript, on_text)
         self.transcription_options = LiveOptions(
                 model="nova-2",
                 language="en-US",
@@ -48,40 +83,33 @@ class DeepgramSession:
                 sample_rate=self.codec.sample_rate,
                 container=self.codec.container)
 
-    async def speak(self, phrase):
-        """ Speaks the phrase received as parameter """
-        asyncio.create_task(self.process_speech(phrase))
+    async def send(self, audio):
+        """ Sends audio to Deepgram """
+        await self.stt.send(audio)
 
     async def process_speech(self, phrase):
         """ Processes the speech received """
         response = await self.tts.stream_raw({"text": phrase},
                                              self.speak_options)
-        asyncio.create_task(self.shandler(self, response))
+        async with self.speech_lock:
+            await self.codec.process_response(response, self.queue)
 
     async def start(self):
-        """ Returns start coroutines for both TTS and STT """
-        return await self.stt.start(self.transcription_options)
+        """ Starts a Depgram connection """
+        if await self.stt.start(self.transcription_options) is False:
+            return
 
-    async def send(self, audio):
-        """ Sends an audio packet """
-        await self.stt.send(audio)
+        if DEEPGRAM_WELCOME:
+            asyncio.create_task(self.process_speech(DEEPGRAM_WELCOME))
 
-    async def finish(self):
-        """ Terminates a session """
-        await self.stt.finish()
+    async def handle_phrase(self, phrase):
+        """ handles the response of a phrase """
+        response = await chatgpt.handle(self.b2b_key, phrase)
+        asyncio.create_task(self.process_speech(response))
 
-
-class Deepgram:
-    """ Implements Deeepgram communication """
-
-    def __init__(self, key):
-        self.client = DeepgramClient(key)
-
-    def new_call(self, codec, shandler, thandler):
-        """ adds a transcribe handler """
-        return DeepgramSession(self.client, codec, shandler, thandler)
-
-    def close(self):
+    async def close(self):
         """ closes the Deepgram session """
+        chatgpt.delete_call(self.b2b_key)
+        await self.stt.finish()
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

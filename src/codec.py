@@ -21,6 +21,10 @@ class GenericCodec(ABC):
     def get_silence(self):
         """ Returns a silence packet """
 
+    @abstractmethod
+    def parse(self, data):
+        """ Parses codec packets """
+
 
 class Opus(GenericCodec):
     """ Opus codec handling """
@@ -33,11 +37,12 @@ class Opus(GenericCodec):
         self.container = 'ogg'
 
     async def process_response(self, response, queue):
-        pages = []
         async for data in response.aiter_bytes():
-            parsed = OggOpus(data)
-            for packet in parsed.packets():
+            for packet in self.parse(data):
                 queue.put_nowait(packet)
+
+    def parse(self, data):
+        return OggOpus(data).packets()
 
     def get_silence(self):
         return b'\xf8\xff\xfe'
@@ -54,21 +59,25 @@ class G711(GenericCodec):
         self.name = "g711"
 
     async def process_response(self, response, queue):
-        chunk_size = self.get_payload_len()
-        buffer = bytearray()
         async for data in response.aiter_bytes():
-            buffer.extend(data)
-            while len(buffer) > 0:
-                payload = buffer[:chunk_size]
-                buffer = buffer[chunk_size:]
-
-                if len(payload) == 0:
-                    break
-                if len(payload) < chunk_size:
-                    # fill with silence
-                    remain = chunk_size - len(payload)
-                    payload = payload + self.get_silence_byte() * remain
+            for payload in self.parse(data):
                 queue.put_nowait(payload)
+
+    def parse(self, data):
+        chunk_size = self.get_payload_len()
+        packets = []
+        while len(data) > 0:
+            payload = data[:chunk_size]
+            data = data[chunk_size:]
+
+            if len(payload) == 0:
+                break
+            if len(payload) < chunk_size:
+                # fill with silence
+                remain = chunk_size - len(payload)
+                payload = payload + self.get_silence_byte() * remain
+            packets.append(payload)
+        return packets
 
     def get_silence(self):
         return self.get_silence_byte() * self.get_payload_len()

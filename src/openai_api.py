@@ -22,6 +22,10 @@ OPENAI_HEADERS = {
 }
 
 
+class UnsupportedCodec(Exception):
+    """ Exception for Unsupported Codecs errors """
+
+
 class OpenAI(AIEngine):
 
     """ Implements WS communication with OpenAI """
@@ -38,7 +42,7 @@ class OpenAI(AIEngine):
         elif codec.name == "alaw":
             self.codec_name = "g711_alaw"
         else:
-            raise Exception(f"Unsupported Codec {codec.name}")
+            raise UnsupportedCodec(codec.name)
 
     async def start(self):
         """ Starts OpenAI connection and logs messages """

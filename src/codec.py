@@ -1,7 +1,13 @@
 """ Module that implements a generic codec """
 
+import logging
 from abc import ABC, abstractmethod
+from aiortc import RTCRtpCodecParameters
 from opus import OggOpus
+
+
+class UnsupportedCodec(Exception):
+    """ Raised when there is a codec mismatch """
 
 
 class GenericCodec(ABC):
@@ -109,5 +115,35 @@ class PCMA(G711):
 
     def get_silence(self):
         return b'\xD5'
+
+
+def get_match_codec(sdp, supported_codecs):
+    """ Returns the codec to be used """
+    logging.debug(sdp)
+    logging.debug(sdp.media[0].rtp.codecs)
+
+    for codec in sdp.media[0].rtp.codecs:
+        if codec.name.lower() in supported_codecs:
+            break
+    else:
+        # try to find based on fmt - default values
+        for pt in sdp.media[0].fmt:
+            if pt in [0, 8]:
+                mime = f"audio/PCM{'U' if pt == 0 else 'A'}"
+                codec = RTCRtpCodecParameters(mimeType=mime,
+                                              clockRate=8000,
+                                              payloadType=pt)
+                break
+        else:
+            raise UnsupportedCodec("no common codecs")
+
+    codec_name = codec.name.lower()
+    if codec_name == "pcmu":
+        return PCMU(codec)
+    if codec_name == "pcma":
+        return PCMA(codec)
+    if codec_name == "opus":
+        return Opus(codec)
+    raise UnsupportedCodec("no codec match")
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

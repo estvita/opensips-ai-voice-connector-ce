@@ -17,6 +17,7 @@ from deepgram import (  # pylint: disable=import-error
 
 from ai import AIEngine
 from chatgpt_api import ChatGPT
+from codec import get_match_codec
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", "gpt-4o")
@@ -30,10 +31,10 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     """ Implements Deeepgram communication """
 
-    def __init__(self, key, codec, queue):
+    def __init__(self, key, sdp, queue):
         self.deepgram = DeepgramClient(DEEPGRAM_API_KEY)
         self.b2b_key = key
-        self.codec = codec
+        self.codec = get_match_codec(sdp, ["pcmu", "pcma", "opus"])
         self.queue = queue
         self.stt = self.deepgram.listen.asyncwebsocket.v("1")
         self.tts = self.deepgram.speak.asyncrest.v("1")

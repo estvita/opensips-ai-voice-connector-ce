@@ -8,16 +8,10 @@ import logging
 import datetime
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
-from aiortc import RTCRtpCodecParameters
 from opensipscli import cli
 
 from rtp import decode_rtp_packet, generate_rtp_packet
-from codec import Opus, PCMA, PCMU
 from utils import get_ai
-
-
-class CodecException(Exception):
-    """ Raised when there is a codec mismatch """
 
 
 class Call():  # pylint: disable=too-many-instance-attributes
@@ -51,9 +45,9 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.stop_event = asyncio.Event()
         self.stop_event.clear()
 
-        self.codec = self.get_codec(sdp)
+        self.ai = get_ai(flavor, b2b_key, sdp, self.rtp)
 
-        self.ai = get_ai(flavor, b2b_key, self.codec, self.rtp)
+        self.codec = self.ai.get_codec()
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.serversock.bind((host_ip, 0))
@@ -72,34 +66,6 @@ class Call():  # pylint: disable=too-many-instance-attributes
                                          'code': 200,
                                          'reason': 'OK',
                                          'body': str(sdp)})
-
-    def get_codec(self, sdp):
-        """ Returns the codec to be used """
-        logging.debug(sdp)
-        logging.debug(sdp.media[0].rtp.codecs)
-
-        for codec in sdp.media[0].rtp.codecs:
-            if codec.name.lower() in ["pcmu", "pcma", "opus"]:
-                break
-        else:
-            # try to find based on fmt - default values
-            for pt in sdp.media[0].fmt:
-                if pt in [0, 8]:
-                    mime = f"audio/PCM{'U' if pt == 0 else 'A'}"
-                    codec = RTCRtpCodecParameters(mimeType=mime,
-                                                  clockRate=8000,
-                                                  payloadType=pt)
-                    break
-            else:
-                raise CodecException("No supported codec found")
-
-        codec_name = codec.name.lower()
-        if codec_name == "pcmu":
-            return PCMU(codec)
-        if codec_name == "pcma":
-            return PCMA(codec)
-        if codec_name == "opus":
-            return Opus(codec)
 
     def get_new_sdp(self, sdp, host_ip):
         """ Gets a new SDP to be sent back in 200 OK """

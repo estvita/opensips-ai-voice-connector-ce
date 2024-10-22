@@ -10,6 +10,7 @@ import base64
 import logging
 from websockets.asyncio.client import connect
 from ai import AIEngine
+from codec import get_match_codec
 
 
 OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL",
@@ -30,19 +31,18 @@ class OpenAI(AIEngine):
 
     """ Implements WS communication with OpenAI """
 
-    def __init__(self, key, codec, queue):
-        self.codec = codec
+    def __init__(self, key, sdp, queue):
         self.queue = queue
         self.ws = None
         self.session = None
 
+        self.codec = get_match_codec(sdp, ["pcmu", "pcma"])
+
         # normalize codec
-        if codec.name == "mulaw":
+        if self.codec.name == "mulaw":
             self.codec_name = "g711_ulaw"
-        elif codec.name == "alaw":
+        elif self.codec.name == "alaw":
             self.codec_name = "g711_alaw"
-        else:
-            raise UnsupportedCodec(codec.name)
 
     async def start(self):
         """ Starts OpenAI connection and logs messages """

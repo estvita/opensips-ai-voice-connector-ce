@@ -8,7 +8,8 @@ import asyncio
 import logging
 
 from opensipscli import args, cli
-from call import Call, CodecException
+from call import Call
+from codec import UnsupportedCodec
 from utils import get_ai_flavor
 
 
@@ -54,7 +55,7 @@ def udp_handler(sock):
 
         try:
             new_call = Call(key, sdp_str, mycli, get_ai_flavor(params))
-        except CodecException:
+        except UnsupportedCodec:
             mycli.mi('ua_session_reply', {'key': key,
                                           'method': method,
                                           'code': 488,

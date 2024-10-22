@@ -40,13 +40,12 @@ def get_ai_flavor(params):
     if to_re:
         to = to_re.group("user")
     keys = list(FLAVORS.keys())
-    if not to.isnumeric() and to in keys:
+    if to in keys:
         flavor = to
     else:
         try:
-            flavor_index = int(to[0])
-            if flavor_index < len(keys):
-                flavor = keys[flavor_index]
+            flavor_index = int(to[-1])
+            flavor = keys[flavor_index % len(keys)]
         except ValueError:
             pass
     return flavor

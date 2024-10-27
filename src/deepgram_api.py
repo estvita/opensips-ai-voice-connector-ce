@@ -19,12 +19,16 @@ from ai import AIEngine
 from chatgpt_api import ChatGPT
 from codec import get_match_codec
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", "gpt-4o")
+CHATGPT_API_KEY = os.getenv("CHATGPT_API_KEY", os.getenv("OPENAI_API_KEY"))
+CHATGPT_API_MODEL = os.getenv("CHATGPT_API_MODEL", "gpt-4o")
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+DEEPGRAM_LANGUAGE = os.getenv("DEEPGRAM_LANGUAGE", "en-US")
+DEEPGRAM_VOICE = os.getenv("DEEPGRAM_VOICE", "aura-asteria-en")
+DEEPGRAM_SPEECH_MODEL = os.getenv("DEEPGRAM_SPEECH_MODEL",
+                                  "nova-2-conversationalai")
 DEEPGRAM_WELCOME = os.getenv('DEEPGRAM_WELCOME_MSG', None)
 
-chatgpt = ChatGPT(OPENAI_API_KEY, OPENAI_API_MODEL)
+chatgpt = ChatGPT(CHATGPT_API_KEY, CHATGPT_API_MODEL)
 
 
 class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
@@ -62,8 +66,8 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
         self.stt.on(LiveTranscriptionEvents.Transcript, on_text)
         self.transcription_options = LiveOptions(
-                model="nova-2",
-                language="en-US",
+                model=DEEPGRAM_SPEECH_MODEL,
+                language=DEEPGRAM_LANGUAGE,
                 punctuate=True,
                 filler_words=True,
                 interim_results=True,
@@ -73,7 +77,7 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
         # don't use sample_rate if we have a bitrate
         if self.codec.bitrate:
             self.speak_options = SpeakOptions(
-                model="aura-asteria-en",
+                model=DEEPGRAM_VOICE,
                 encoding=self.codec.name,
                 bit_rate=self.codec.bitrate,
                 container=self.codec.container)

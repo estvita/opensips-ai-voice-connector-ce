@@ -1,25 +1,49 @@
 """ Main module that starts the Deepgram AI integration """
 
-import os
+import sys
 import json
 import signal
 import socket
 import asyncio
 import logging
+import argparse
 
 from opensipscli import args, cli
 from call import Call
+from config import Config
 from codec import UnsupportedCodec
 from utils import get_ai_flavor
+from version import __version__
 
 
-MI_IP = os.getenv("MI_IP", default='127.0.0.1')
-MI_PORT = int(os.getenv("MI_PORT", default='8080'))
+parser = argparse.ArgumentParser(description='OpenSIPS AI Voice Connector',
+                                 prog=sys.argv[0],
+                                 usage='%(prog)s [OPTIONS]',
+                                 epilog='\n')
+# Argument used to print the current version
+parser.add_argument('-v', '--version',
+                    action='version',
+                    default=None,
+                    version=f'OpenSIPS CLI {__version__}')
+parser.add_argument('-c', '--config',
+                    metavar='[CONFIG]',
+                    type=str,
+                    default=None,
+                    help='specify a configuration file')
+
+
+parsed_args = parser.parse_args()
+Config.init(parsed_args.config)
+
+mi_cfg = Config.get("opensips")
+mi_ip = mi_cfg.get("ip", "MI_IP", "127.0.0.1")
+mi_port = int(mi_cfg.get("port", "MI_PORT", "8080"))
 
 myargs = args.OpenSIPSCLIArgs(log_level='WARNING',
                               communication_type='datagram',
-                              datagram_ip=MI_IP,
-                              datagram_port=MI_PORT)
+                              datagram_ip=mi_ip,
+                              datagram_port=mi_port)
+
 
 mycli = cli.OpenSIPSCLI(myargs)
 calls = {}
@@ -101,8 +125,8 @@ async def reregister(sock):
 
 async def main():
     """ Main function """
-    host_ip = os.getenv("EVENT_IP", "127.0.0.1")
-    port = int(os.getenv("EVENT_PORT", "0"))
+    host_ip = Config.engine("event_ip", "EVENT_IP", "127.0.0.1")
+    port = int(Config.engine("event_port", "EVENT_PORT", "0"))
 
     event_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     event_socket.bind((host_ip, port))

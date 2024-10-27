@@ -1,6 +1,5 @@
 """ Handles the a SIP call """
 
-import os
 import random
 import socket
 import asyncio
@@ -9,6 +8,7 @@ import datetime
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
 from opensipscli import cli
+from config import Config
 
 from rtp import decode_rtp_packet, generate_rtp_packet
 from utils import get_ai
@@ -24,7 +24,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
             hostname = socket.gethostbyname(socket.gethostname())
         except socket.gaierror:  # unknown hostname
             hostname = "127.0.0.1"
-        host_ip = os.getenv('RTP_IP', hostname)
+        host_ip = Config.engine('rtp_ip', 'RTP_IP', hostname)
 
         self.b2b_key = b2b_key
         self.cli = c

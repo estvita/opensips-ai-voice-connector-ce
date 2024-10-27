@@ -4,19 +4,20 @@
 OpenAI WS communication
 """
 
-import os
 import json
 import base64
 import logging
 from websockets.asyncio.client import connect
 from ai import AIEngine
+from config import Config
 from codec import get_match_codec
 
 
-OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL",
-                             "gpt-4o-realtime-preview-2024-10-01")
+cfg = Config.get("openai")
+OPENAI_API_MODEL = cfg.get("model", "OPENAI_API_MODEL",
+                           "gpt-4o-realtime-preview-2024-10-01")
 URL = f"wss://api.openai.com/v1/realtime?model={OPENAI_API_MODEL}"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = cfg.get(["key", "openai_key"], "OPENAI_API_KEY")
 OPENAI_HEADERS = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Beta": "realtime=v1"

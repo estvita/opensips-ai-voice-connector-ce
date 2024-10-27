@@ -4,7 +4,6 @@
 Module that implements Deepgram communcation
 """
 
-import os
 import logging
 import asyncio
 
@@ -18,15 +17,18 @@ from deepgram import (  # pylint: disable=import-error
 from ai import AIEngine
 from chatgpt_api import ChatGPT
 from codec import get_match_codec
+from config import Config
 
-CHATGPT_API_KEY = os.getenv("CHATGPT_API_KEY", os.getenv("OPENAI_API_KEY"))
-CHATGPT_API_MODEL = os.getenv("CHATGPT_API_MODEL", "gpt-4o")
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-DEEPGRAM_LANGUAGE = os.getenv("DEEPGRAM_LANGUAGE", "en-US")
-DEEPGRAM_VOICE = os.getenv("DEEPGRAM_VOICE", "aura-asteria-en")
-DEEPGRAM_SPEECH_MODEL = os.getenv("DEEPGRAM_SPEECH_MODEL",
-                                  "nova-2-conversationalai")
-DEEPGRAM_WELCOME = os.getenv('DEEPGRAM_WELCOME_MSG', None)
+cfg = Config.get("deepgram")
+CHATGPT_API_KEY = cfg.get(["chatgpt_key", "openai_key"],
+                          ["CHATGPT_API_KEY", "OPENAI_API_KEY"])
+CHATGPT_API_MODEL = cfg.get("chatgpt_model", "CHATGPT_API_MODEL", "gpt-4o")
+DEEPGRAM_API_KEY = cfg.get("key", "DEEPGRAM_API_KEY")
+DEEPGRAM_LANGUAGE = cfg.get("language", "DEEPGRAM_LANGUAGE", "en-US")
+DEEPGRAM_VOICE = cfg.get("voice", "DEEPGRAM_VOICE", "aura-asteria-en")
+DEEPGRAM_SPEECH_MODEL = cfg.get("speech_model", "DEEPGRAM_SPEECH_MODEL",
+                                "nova-2-conversationalai")
+DEEPGRAM_WELCOME = cfg.get("welcome_message", "DEEPGRAM_WELCOME_MSG")
 
 chatgpt = ChatGPT(CHATGPT_API_KEY, CHATGPT_API_MODEL)
 

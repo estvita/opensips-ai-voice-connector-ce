@@ -1,29 +1,115 @@
-## Conversational AI using Deepgram
+# AI Voice Connector - Community Edition
 
-This project uses Deepgram's Speech-to-Text and Text-to-Speech APIs for Python to create a softphone that can be used to talk to a conversational AI, like ChatGPT.
+This project leverages OpenSIPS as a SIP gateway, creating a seamless
+interface between traditional SIP-based communication systems and advanced AI
+engines. By handling SIP communication and passing voice data to external AI
+models, OpenSIPS acts as a powerful middleware layer. This setup enables a
+wide range of voice AI applications, from real-time voice assistants and
+automated customer support to conversational agents and beyond. While OpenSIPS
+provides the gateway functionality, it allows developers the flexibility to
+integrate any AI models needed for tasks like speech recognition, natural
+language understanding, or voice synthesis. This modularity makes it ideal for
+building sophisticated, scalable voice-driven applications without being tied
+to specific AI model constraints.
 
-### How it works
-To handle the call flow, OpenSIPS is used as a SIP server, that notifys the softphone when a new call is received (and other call events). The softphone answers the call and starts transmitting the audio to Deepgram's Speech-to-Text engine. The transcribed text is then sent to the conversational AI, which generates a response. The response is then sent to Deepgram's Text-to-Speech engine, which generates the audio that is sent back to caller's phone. You can use Opus, PCMU or PCMA codecs for the audio.
+OpenSIPS functions as a back-to-back SIP endpoint, managing interactions with
+user agents on one side. On the other side, it connects to an external
+application — known as the **AI Voice Connector** — which facilitates
+communication with the AI engine. This setup allows OpenSIPS to efficiently
+relay voice data between user agents and the AI engine, ensuring seamless and
+responsive interactions for voice-enabled applications.
 
-### Running the project
-Use the following commands to run the application and an OpenSIPS server:
-```bash
-cd docker
+The **AI Voice Connector** is a modular Python application built to leverage
+the OpenSIPS SIP stack, efficiently managing SIP calls and handling the media
+streams within sessions. It provides hooks to capture RTP data, which it sends
+to the AI engine for processing. Once the AI engine responds, the AI Voice
+Connector seamlessly injects the processed data back into the call.
+
+Interactions with AI engines can occur directly as Speech-to-Speech if the AI
+engine provides real-time endpoints. Alternatively, a Speech-to-Text engine
+can be employed to transcribe the audio. The transcript is then sent to the AI
+engine as text, and the AI’s response is processed through a Text-to-Speech
+engine before being relayed back to the SIP user. This flexible workflow
+allows seamless integration of either real-time voice interactions or a
+multi-step process that converts speech to text, processes it, and converts
+responses back into speech for the end user.
+
+
+## Flavors
+
+The engine is designed to accommodate various AI models, adapting to different
+AI "flavors" based on each engine's unique capabilities. The currently
+supported flavors are:
+
+* [Deepgram](docs/ai/deepgram.md): convert to text using Deepgram
+                                   Speech-to-Text, push transcribe to OpenAI
+                                   and then push the response back to Deepgram
+                                   Text-to-Speech engine
+* [OpenAI](docs/ai/openai.md): use OpenAI Real-Time Speech-to-Speech engine
+
+Check out the [AI Flavors](docs/ai-flavors.md) page for more information.
+
+
+## Configuration
+
+Engine configuration is done through a separate configuration fine, or through
+environment variables. See the [Configuration](docs/configuration.md) page for
+all the details.
+
+
+## Getting Started
+
+The simplest way to get the project running is using the Docker Compose files
+found in the [docker/](docker) directory. In order to use them, you need to
+setup [Docker](https://www.docker.com/) on your host and then run:
+
+``` shell
+git clone --recursive https://github.com/OpenSIPS/opensips-ai-voice-connector-ce.git
+cd opensips-ai-voice-connector-ce/docker
+# edit the .env file and adjust the settings accordingly
+# alternatively, create a configuration file
 docker compose up
 ```
 
-Then, you can use a softphone like Zoiper or Linphone to start a call to the OpenSIPS server. The call will be answered and you can start talking to the conversational AI.
+At this point, you should have the engine up and running.
 
-### API Keys
-You need to set the following environment variables with your API keys in the [.env](docker/.env) file:
-```bash
-DEEPGRAM_API_KEY=
-OPENAI_API_KEY=
-```
 
-### OpenSIPS
-You can use other OpenSIPS server, but you need to add `MI_IP` and `MI_PORT` to the [.env](docker/.env) file and start only the application with the following commands:
-```bash
-cd docker
-docker compose up app
-```
+### Testing
+
+Then, you can use a softphone like Zoiper or Linphone to send a call to
+OpenSIPS by dialling one of the supported flavors (i.e. `openai` - see [flavor
+selection](docs/ai-flavors.md#flavor-selection)). You should be able to talk
+to an AI assistent - ask him a question and get a response back.
+
+
+## Resources
+
+Documentation pages contain the following topics:
+
+* [Configuration](docs/config.md) - Information about configuration file
+* [Implementation](docs/implementation.md) - Implementation details
+* [AI Flavors](docs/ai-flavors.md) - Different AI flavors supported
+
+
+## Contribute
+
+This project is Community driven, therefore any contribution is welcome. Feel
+free to open a pull request for any fix/feature you find useful. You can find
+technical information about the project on the
+[Implementation](docs/implementation.md) page.
+
+
+## License
+
+<!-- License source -->
+[License-GPLv3]: https://www.gnu.org/licenses/gpl-3.0.en.html "GNU GPLv3"
+[Logo-CC_BY]: https://i.creativecommons.org/l/by/4.0/88x31.png "Creative Common Logo"
+[License-CC_BY]: https://creativecommons.org/licenses/by/4.0/legalcode "Creative Common License"
+
+The `OpenSIPS SoftSwitch Community Edition` source code is licensed under the [GNU General Public License v3.0][License-GPLv3]
+
+All documentation files (i.e. `.md` extension) are licensed under the [Creative Common License 4.0][License-CC_BY]
+
+![Creative Common Logo][Logo-CC_BY]
+
+© 2024 - OpenSIPS Solutions

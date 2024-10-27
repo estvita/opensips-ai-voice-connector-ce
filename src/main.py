@@ -12,7 +12,7 @@ from opensipscli import args, cli
 from call import Call
 from config import Config
 from codec import UnsupportedCodec
-from utils import get_ai_flavor
+from utils import get_ai_flavor, UnknownSIPUser
 from version import __version__
 
 
@@ -79,12 +79,18 @@ def udp_handler(sock):
 
         try:
             new_call = Call(key, sdp_str, mycli, get_ai_flavor(params))
+            calls[key] = new_call
         except UnsupportedCodec:
             mycli.mi('ua_session_reply', {'key': key,
                                           'method': method,
                                           'code': 488,
                                           'reason': 'Not Acceptable Here'})
-            return
+        except UnknownSIPUser:
+            logging.exception("Unknown SIP user %s")
+            mycli.mi('ua_session_reply', {'key': key,
+                                          'method': method,
+                                          'code': 404,
+                                          'reason': 'Not Found'})
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception("Error creating call %s", e)
             mycli.mi('ua_session_reply', {'key': key,
@@ -92,9 +98,6 @@ def udp_handler(sock):
                                           'code': 500,
                                           'reason':
                                           'Server Internal Error'})
-            return
-
-        calls[key] = new_call
 
     if method == 'BYE':
         asyncio.create_task(calls[key].close())

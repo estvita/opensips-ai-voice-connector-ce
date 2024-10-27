@@ -16,6 +16,8 @@ class ConfigSection(dict):
 
     def getenv(self, env, fallback=None):
         """ returns the configuration from environment """
+        if not env:
+            return fallback
         if isinstance(env, list):
             # check to see whether we have any of the keys
             for e in env:
@@ -25,7 +27,7 @@ class ConfigSection(dict):
             return fallback
         return os.getenv(env, fallback)
 
-    def get(self, option, env, fallback=None):
+    def get(self, option, env=None, fallback=None):
         """ returns the configuration for the required option """
         if isinstance(option, list):
             # check to see whether we have any of the keys
@@ -35,6 +37,19 @@ class ConfigSection(dict):
             # no key found - check if env is a list
             return self.getenv(env, fallback)
         return super().get(option, self.getenv(env, fallback))
+
+    def getboolean(self, option, env=None, fallback=None):
+        """ returns a boolean value from the configuration """
+        val = self.get(option, env, None)
+        if not val:
+            return fallback
+        if val.isnumeric():
+            return int(val) != 0
+        if val.lower() in ["yes", "true", "on"]:
+            return True
+        if val.lower() in ["no", "false", "off"]:
+            return False
+        return fallback
 
 
 class Config():
@@ -53,10 +68,15 @@ class Config():
         return ConfigSection(_Config[section] if section in _Config else {})
 
     @staticmethod
-    def engine(option, env, fallback=None):
+    def engine(option, env=None, fallback=None):
         """ Special handling for the engine section """
         section = Config.get("engine")
         return section.get(option, env, fallback)
+
+    @staticmethod
+    def sections():
+        """ Retrieves the sections from the config file """
+        return _Config.sections()
 
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

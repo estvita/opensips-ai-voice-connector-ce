@@ -7,21 +7,27 @@ Module that provides helper functions for AI
 import re
 from deepgram_api import Deepgram
 from openai_api import OpenAI
+from config import Config
+
 FLAVORS = {"deepgram": Deepgram,
            "openai": OpenAI}
 
 
-def get_ai_flavor(params):
-    """ Returns the AI flavor to be used """
-    flavor = list(FLAVORS.keys())[0]
+class UnknownSIPUser(Exception):
+    """ User is not known """
+
+
+def get_user(params):
+    """ Returns the User from the SIP headers """
+
     if 'headers' not in params:
-        return flavor
+        return None
 
     # Try to get the To header
     to_lines = [line for line in params['headers'].splitlines()
                 if line.startswith("To:")]
     if len(to_lines) == 0:
-        return flavor
+        return None
     to = to_lines[0].split(":", 1)[1].strip()
     uri_re = re.compile(
         r'(?P<scheme>\w+):'
@@ -37,17 +43,53 @@ def get_ai_flavor(params):
         )
     to_re = uri_re.search(to)
     if to_re:
-        to = to_re.group("user")
+        return to_re.group("user").lower()
+    return None
+
+
+def _dialplan_match(regex, string):
+    """ Checks if a regex matches the string """
+    pattern = re.compile(regex)
+    return pattern.match(string)
+
+
+def get_ai_flavor_default(user):
+    """ Returns the default algorithm for AI choosing """
     keys = list(FLAVORS.keys())
-    if to in keys:
-        flavor = to
-    else:
-        try:
-            flavor_index = int(to[-1])
-            flavor = keys[flavor_index % len(keys)]
-        except ValueError:
-            pass
-    return flavor
+    if user in keys:
+        if Config.get(user).getboolean("disabled", False):
+            return user
+    # remove disabled engines
+    keys = [k for k in keys if
+            not Config.get(k).getboolean("disabled", False)]
+    hash_index = hash(user) % len(keys)
+    return keys[hash_index]
+
+
+def get_ai_flavor(params):
+    """ Returns the AI flavor to be used """
+
+    user = get_user(params)
+    if not user:
+        raise UnknownSIPUser("cannot parse username")
+
+    # first, get the sections in order and check if they have a dialplan
+    flavor = None
+    for flavor in Config.sections():
+        if flavor not in FLAVORS:
+            continue
+        if Config.get(flavor).getboolean("disabled", False):
+            continue
+        dialplans = Config.get(flavor).get("match")
+        if not dialplans:
+            continue
+        if isinstance(dialplans, list):
+            for dialplan in dialplans:
+                if _dialplan_match(dialplan, user):
+                    return flavor
+        elif _dialplan_match(dialplans, user):
+            return flavor
+    return get_ai_flavor_default(user)
 
 
 def get_ai(flavor, key, codec, queue):

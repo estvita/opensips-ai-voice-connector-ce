@@ -74,8 +74,7 @@ Parameters that are common to all flavors are:
 | Parameter  | Mandatory | Description | Default |
 |------------|-----------|-------------|---------|
 | `disabled` | no | Indicates whether the engine should be disabled or not | `false` |
-| `match` | no | A regular expression, or a list of regular expressions that
-are being used to [select](ai-flavors.md#flavor-selection) when to use the corresponding AI flavor | empty |
+| `match` | no | A regular expression, or a list of regular expressions that are being used to [select](ai-flavors.md#flavor-selection) when to use the corresponding AI flavor | empty |
 
 ## Example
 

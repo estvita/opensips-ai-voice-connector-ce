@@ -55,13 +55,11 @@ def _dialplan_match(regex, string):
 
 def get_ai_flavor_default(user):
     """ Returns the default algorithm for AI choosing """
-    keys = list(FLAVORS.keys())
-    if user in keys:
-        if Config.get(user).getboolean("disabled", False):
-            return user
     # remove disabled engines
-    keys = [k for k in keys if
+    keys = [k for k, _ in FLAVORS.items() if
             not Config.get(k).getboolean("disabled", False)]
+    if user in keys:
+        return user
     hash_index = hash(user) % len(keys)
     return keys[hash_index]
 

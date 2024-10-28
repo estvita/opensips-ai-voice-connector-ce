@@ -7,7 +7,7 @@ import logging
 import datetime
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
-from opensipscli import cli
+from opensips.mi import OpenSIPSMI, OpenSIPSMIException
 from config import Config
 
 from rtp import decode_rtp_packet, generate_rtp_packet
@@ -18,7 +18,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
     """ Class that handles a call """
     def __init__(self,  # pylint: disable=too-many-arguments
                  b2b_key, sdp_str,
-                 c: cli.OpenSIPSCLI,
+                 c: OpenSIPSMI,
                  flavor: str):
         try:
             hostname = socket.gethostbyname(socket.gethostname())
@@ -27,7 +27,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         host_ip = Config.engine('rtp_ip', 'RTP_IP', hostname)
 
         self.b2b_key = b2b_key
-        self.cli = c
+        self.mi_conn = c
 
         # remove rtcp line, since the parser throws an error on it
         sdp_str = "\n".join([line for line in sdp_str.split("\n")
@@ -60,12 +60,15 @@ class Call():  # pylint: disable=too-many-instance-attributes
         loop.add_reader(self.serversock.fileno(), self.read_rtp)
         asyncio.create_task(self.send_rtp())
         logging.info("handling %s using %s AI", b2b_key, flavor)
-
-        self.cli.mi('ua_session_reply', {'key': b2b_key,
+        try:
+            self.mi_conn.execute('ua_session_reply', {'key': b2b_key,
                                          'method': 'INVITE',
                                          'code': 200,
                                          'reason': 'OK',
                                          'body': str(sdp)})
+        except OpenSIPSMIException as e:
+            logging.error("Error sending 200 OK: %s", e)
+            raise
 
     def get_new_sdp(self, sdp, host_ip):
         """ Gets a new SDP to be sent back in 200 OK """

@@ -8,12 +8,14 @@ import asyncio
 import logging
 import argparse
 
-from opensipscli import args, cli
 from call import Call
 from config import Config
 from codec import UnsupportedCodec
 from utils import get_ai_flavor, UnknownSIPUser
 from version import __version__
+
+from opensips.mi import OpenSIPSMI, OpenSIPSMIException
+from opensips.event import AsyncOpenSIPSEventHandler, OpenSIPSEventException
 
 
 parser = argparse.ArgumentParser(description='OpenSIPS AI Voice Connector',
@@ -39,13 +41,8 @@ mi_cfg = Config.get("opensips")
 mi_ip = mi_cfg.get("ip", "MI_IP", "127.0.0.1")
 mi_port = int(mi_cfg.get("port", "MI_PORT", "8080"))
 
-myargs = args.OpenSIPSCLIArgs(log_level='WARNING',
-                              communication_type='datagram',
-                              datagram_ip=mi_ip,
-                              datagram_port=mi_port)
+mi_conn = OpenSIPSMI(conn="datagram", datagram_ip=mi_ip, datagram_port=mi_port)
 
-
-mycli = cli.OpenSIPSCLI(myargs)
 calls = {}
 
 logging.basicConfig(
@@ -54,10 +51,8 @@ logging.basicConfig(
 )
 
 
-def udp_handler(sock):
+def udp_handler(data):
     """ UDP handler of events received """
-    message = sock.recv(4096)
-    data = json.loads(message)
 
     if 'params' not in data:
         return
@@ -78,22 +73,22 @@ def udp_handler(sock):
         sdp_str = params['body']
 
         try:
-            new_call = Call(key, sdp_str, mycli, get_ai_flavor(params))
+            new_call = Call(key, sdp_str, mi_conn, get_ai_flavor(params))
             calls[key] = new_call
         except UnsupportedCodec:
-            mycli.mi('ua_session_reply', {'key': key,
+            mi_conn.execute('ua_session_reply', {'key': key,
                                           'method': method,
                                           'code': 488,
                                           'reason': 'Not Acceptable Here'})
         except UnknownSIPUser:
             logging.exception("Unknown SIP user %s")
-            mycli.mi('ua_session_reply', {'key': key,
+            mi_conn.execute('ua_session_reply', {'key': key,
                                           'method': method,
                                           'code': 404,
                                           'reason': 'Not Found'})
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception("Error creating call %s", e)
-            mycli.mi('ua_session_reply', {'key': key,
+            mi_conn.execute('ua_session_reply', {'key': key,
                                           'method': method,
                                           'code': 500,
                                           'reason':
@@ -104,7 +99,7 @@ def udp_handler(sock):
         calls.pop(key, None)
 
 
-async def shutdown(s, loop, event_socket):
+async def shutdown(s, loop, event):
     """ Called when the program is shutting down """
     logging.info("Received exit signal %s...", s)
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
@@ -113,17 +108,15 @@ async def shutdown(s, loop, event_socket):
     logging.info("Cancelling %d outstanding tasks", len(tasks))
     for call in calls.values():
         await call.close()
-    event_socket.close()
+    try:
+        event.unsubscribe()
+    except OpenSIPSEventException as e:
+        logging.error("Error unsubscribing from event: %s", e)
+    except OpenSIPSMIException as e:
+        logging.error("Error unsubscribing from event: %s", e)
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
     logging.info("Shutdown complete.")
-
-
-async def reregister(sock):
-    """ Re-Registers a socket to OpenSIPS """
-    while True:
-        mycli.mi('event_subscribe', ['E_UA_SESSION', sock])
-        await asyncio.sleep(3600 - 30)
 
 
 async def main():
@@ -131,12 +124,16 @@ async def main():
     host_ip = Config.engine("event_ip", "EVENT_IP", "127.0.0.1")
     port = int(Config.engine("event_port", "EVENT_PORT", "0"))
 
-    event_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    event_socket.bind((host_ip, port))
-    _, port = event_socket.getsockname()
+    handler = AsyncOpenSIPSEventHandler(mi_conn, "datagram", ip=host_ip, port=port)
+    try:
+        event = handler.subscribe("E_UA_SESSION", udp_handler)
+    except OpenSIPSEventException as e:
+        logging.error("Error subscribing to event: %s", e)
+        return
+
+    _, port = event.socket.sock.getsockname()
 
     logging.info("Starting server at %s:%hu", host_ip, port)
-    sock = f'udp:{host_ip}:{port}'
 
     loop = asyncio.get_running_loop()
     stop = loop.create_future()
@@ -145,18 +142,15 @@ async def main():
         signal.SIGTERM,
         lambda: asyncio.create_task(shutdown(signal.SIGTERM,
                                              loop,
-                                             event_socket)),
+                                             event)),
     )
 
     loop.add_signal_handler(
         signal.SIGINT,
         lambda: asyncio.create_task(shutdown(signal.SIGINT,
                                              loop,
-                                             event_socket)),
+                                             event)),
     )
-    loop.create_task(reregister(sock))
-
-    loop.add_reader(event_socket.fileno(), udp_handler, event_socket)
 
     try:
         await stop

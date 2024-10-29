@@ -1,8 +1,6 @@
 FROM python:3.10-slim-buster
 
-RUN apt-get update && apt-get install -y \
-    git pkg-config python3-dev default-libmysqlclient-dev build-essential && \
-    pip install opensips
+RUN pip install opensips
 
 WORKDIR /app
 

@@ -15,7 +15,7 @@ from utils import get_ai_flavor, UnknownSIPUser
 from version import __version__
 
 from opensips.mi import OpenSIPSMI, OpenSIPSMIException
-from opensips.event import AsyncOpenSIPSEventHandler, OpenSIPSEventException
+from opensips.event import OpenSIPSEventHandler, OpenSIPSEventException
 
 
 parser = argparse.ArgumentParser(description='OpenSIPS AI Voice Connector',
@@ -124,9 +124,9 @@ async def main():
     host_ip = Config.engine("event_ip", "EVENT_IP", "127.0.0.1")
     port = int(Config.engine("event_port", "EVENT_PORT", "0"))
 
-    handler = AsyncOpenSIPSEventHandler(mi_conn, "datagram", ip=host_ip, port=port)
+    handler = OpenSIPSEventHandler(mi_conn, "datagram", ip=host_ip, port=port)
     try:
-        event = handler.subscribe("E_UA_SESSION", udp_handler)
+        event = handler.async_subscribe("E_UA_SESSION", udp_handler)
     except OpenSIPSEventException as e:
         logging.error("Error subscribing to event: %s", e)
         return

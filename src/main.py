@@ -1,21 +1,40 @@
+#!/usr/bin/env python
+#
+# Copyright (C) 2024 SIP Point Consulting SRL
+#
+# This file is part of the OpenSIPS AI Voice Connector project
+# (see https://github.com/OpenSIPS/opensips-ai-voice-connector-ce).
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
 """ Main module that starts the Deepgram AI integration """
 
 import sys
-import json
 import signal
-import socket
 import asyncio
 import logging
 import argparse
+
+from opensips.mi import OpenSIPSMI, OpenSIPSMIException
+from opensips.event import OpenSIPSEventHandler, OpenSIPSEventException
 
 from call import Call
 from config import Config
 from codec import UnsupportedCodec
 from utils import get_ai_flavor, UnknownSIPUser
 from version import __version__
-
-from opensips.mi import OpenSIPSMI, OpenSIPSMIException
-from opensips.event import OpenSIPSEventHandler, OpenSIPSEventException
 
 
 parser = argparse.ArgumentParser(description='OpenSIPS AI Voice Connector',
@@ -77,22 +96,23 @@ def udp_handler(data):
             calls[key] = new_call
         except UnsupportedCodec:
             mi_conn.execute('ua_session_reply', {'key': key,
-                                          'method': method,
-                                          'code': 488,
-                                          'reason': 'Not Acceptable Here'})
+                                                 'method': method,
+                                                 'code': 488,
+                                                 'reason':
+                                                 'Not Acceptable Here'})
         except UnknownSIPUser:
             logging.exception("Unknown SIP user %s")
             mi_conn.execute('ua_session_reply', {'key': key,
-                                          'method': method,
-                                          'code': 404,
-                                          'reason': 'Not Found'})
+                                                 'method': method,
+                                                 'code': 404,
+                                                 'reason': 'Not Found'})
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception("Error creating call %s", e)
             mi_conn.execute('ua_session_reply', {'key': key,
-                                          'method': method,
-                                          'code': 500,
-                                          'reason':
-                                          'Server Internal Error'})
+                                                 'method': method,
+                                                 'code': 500,
+                                                 'reason':
+                                                 'Server Internal Error'})
 
     if method == 'BYE':
         asyncio.create_task(calls[key].close())

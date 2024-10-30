@@ -49,14 +49,17 @@ DEEPGRAM_SPEECH_MODEL = cfg.get("speech_model", "DEEPGRAM_SPEECH_MODEL",
                                 "nova-2-conversationalai")
 DEEPGRAM_WELCOME = cfg.get("welcome_message", "DEEPGRAM_WELCOME_MSG")
 
-chatgpt = ChatGPT(CHATGPT_API_KEY, CHATGPT_API_MODEL)
-
 
 class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     """ Implements Deeepgram communication """
 
+    chatgpt = None
+
     def __init__(self, key, sdp, queue):
+
+        if not Deepgram.chatgpt:
+            Deepgram.chatgpt = ChatGPT(CHATGPT_API_KEY, CHATGPT_API_MODEL)
         self.deepgram = DeepgramClient(DEEPGRAM_API_KEY)
         self.b2b_key = key
         self.codec = get_match_codec(sdp, ["pcmu", "pcma", "opus"])
@@ -69,7 +72,7 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.buf = []
         sentences = self.buf
         call_ref = self
-        chatgpt.create_call(self.b2b_key, DEEPGRAM_WELCOME)
+        Deepgram.chatgpt.create_call(self.b2b_key, DEEPGRAM_WELCOME)
 
         async def on_text(__, result, **_):
             sentence = result.channel.alternatives[0].transcript
@@ -130,12 +133,12 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     async def handle_phrase(self, phrase):
         """ handles the response of a phrase """
-        response = await chatgpt.handle(self.b2b_key, phrase)
+        response = await Deepgram.chatgpt.handle(self.b2b_key, phrase)
         asyncio.create_task(self.process_speech(response))
 
     async def close(self):
         """ closes the Deepgram session """
-        chatgpt.delete_call(self.b2b_key)
+        Deepgram.chatgpt.delete_call(self.b2b_key)
         await self.stt.finish()
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

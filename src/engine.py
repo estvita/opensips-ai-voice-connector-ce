@@ -27,11 +27,12 @@ import logging
 
 from opensips.mi import OpenSIPSMI, OpenSIPSMIException
 from opensips.event import OpenSIPSEventHandler, OpenSIPSEventException
+from aiortc.sdp import SessionDescription
 
 from call import Call
 from config import Config
 from codec import UnsupportedCodec
-from utils import get_ai_flavor, UnknownSIPUser
+from utils import get_ai_flavor, indialog, UnknownSIPUser
 
 
 mi_cfg = Config.get("opensips")
@@ -41,6 +42,69 @@ mi_port = int(mi_cfg.get("port", "MI_PORT", "8080"))
 mi_conn = OpenSIPSMI(conn="datagram", datagram_ip=mi_ip, datagram_port=mi_port)
 
 calls = {}
+
+
+def mi_reply(key, method, code, reason, body=None):
+    """ Replies to the server """
+    params = {'key': key,
+              'method': method,
+              'code': code,
+              'reason': reason}
+    if body:
+        params["body"] = body
+    mi_conn.execute('ua_session_reply', params)
+
+
+def handle_call(call, key, method, params):
+    """ Handles a SIP call """
+
+    if method == 'INVITE':
+        if 'body' not in params:
+            mi_reply(key, method, 415, 'Unsupported Media Type')
+            return
+
+        sdp_str = params['body']
+        # remove rtcp line, since the parser throws an error on it
+        sdp_str = "\n".join([line for line in sdp_str.split("\n")
+                             if not line.startswith("a=rtcp:")])
+        sdp = SessionDescription.parse(sdp_str)
+
+        if call:
+            # handle in-dialog re-INVITE
+            direction = sdp.media[0].direction
+            if not direction or direction == "sendrecv":
+                call.resume()
+            else:
+                call.pause()
+            try:
+                mi_reply(key, method, 200, 'OK', call.get_body())
+            except OpenSIPSMIException:
+                logging.exception("Error sending response")
+            return
+
+        try:
+            new_call = Call(key, sdp, get_ai_flavor(params))
+            calls[key] = new_call
+            mi_reply(key, method, 200, 'OK', new_call.get_body())
+        except UnsupportedCodec:
+            mi_reply(key, method, 488, 'Not Acceptable Here')
+        except UnknownSIPUser:
+            logging.exception("Unknown SIP user %s")
+            mi_reply(key, method, 404, 'Not Found')
+        except OpenSIPSMIException:
+            logging.exception("Error sending response")
+            mi_reply(key, method, 500, 'Server Internal Error')
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logging.exception("Error creating call %s", e)
+            mi_reply(key, method, 500, 'Server Internal Error')
+
+    elif not call:
+        mi_reply(key, method, 405, 'Method not supported')
+        return
+
+    if method == 'BYE':
+        asyncio.create_task(call.close())
+        calls.pop(key, None)
 
 
 def udp_handler(data):
@@ -57,39 +121,16 @@ def udp_handler(data):
     if 'method' not in params:
         return
     method = params['method']
-
-    if method == 'INVITE':
-        if 'body' not in params:
+    if indialog(params):
+        # search for the call
+        if key not in calls:
+            mi_reply(key, method, 481, 'Call/Transaction Does Not Exist')
             return
+        call = calls[key]
+    else:
+        call = None
 
-        sdp_str = params['body']
-
-        try:
-            new_call = Call(key, sdp_str, mi_conn, get_ai_flavor(params))
-            calls[key] = new_call
-        except UnsupportedCodec:
-            mi_conn.execute('ua_session_reply', {'key': key,
-                                                 'method': method,
-                                                 'code': 488,
-                                                 'reason':
-                                                 'Not Acceptable Here'})
-        except UnknownSIPUser:
-            logging.exception("Unknown SIP user %s")
-            mi_conn.execute('ua_session_reply', {'key': key,
-                                                 'method': method,
-                                                 'code': 404,
-                                                 'reason': 'Not Found'})
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logging.exception("Error creating call %s", e)
-            mi_conn.execute('ua_session_reply', {'key': key,
-                                                 'method': method,
-                                                 'code': 500,
-                                                 'reason':
-                                                 'Server Internal Error'})
-
-    if method == 'BYE':
-        asyncio.create_task(calls[key].close())
-        calls.pop(key, None)
+    handle_call(call, key, method, params)
 
 
 async def shutdown(s, loop, event):

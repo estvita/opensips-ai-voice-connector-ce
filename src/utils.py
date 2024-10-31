@@ -24,6 +24,7 @@ Module that provides helper functions for AI
 """
 
 import re
+from sipmessage import Address
 from deepgram_api import Deepgram
 from openai_api import OpenAI
 from config import Config
@@ -36,34 +37,41 @@ class UnknownSIPUser(Exception):
     """ User is not known """
 
 
+def get_header(params, header):
+    """ Returns a specific line from headers """
+    if 'headers' not in params:
+        return None
+    hdr_lines = [line for line in params['headers'].splitlines()
+                 if re.match(f"{header}:", line, re.I)]
+    if len(hdr_lines) == 0:
+        return None
+    return hdr_lines[0].split(":", 1)[1].strip()
+
+
+def get_to(params):
+    """ Returns the To line parameters """
+    to_line = get_header(params, "To")
+    if not to_line:
+        return None
+    return Address.parse(to_line)
+
+
+def indialog(params):
+    """ indicates whether the message is an in-dialog one """
+    if 'headers' not in params:
+        return False
+    to = get_to(params)
+    params = to.parameters
+    if "tag" in params and len(params["tag"]) > 0:
+        return True
+    return False
+
+
 def get_user(params):
     """ Returns the User from the SIP headers """
 
-    if 'headers' not in params:
-        return None
-
-    # Try to get the To header
-    to_lines = [line for line in params['headers'].splitlines()
-                if line.startswith("To:")]
-    if len(to_lines) == 0:
-        return None
-    to = to_lines[0].split(":", 1)[1].strip()
-    uri_re = re.compile(
-        r'(?P<scheme>\w+):'
-        + r'(?:(?P<user>[\w\.+*]+):?(?P<password>[\w\.]+)?@)?'
-        + r'\[?(?P<host>'
-        + r'(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|'
-        + r'(?:(?:[0-9a-fA-F]{1,4}):){7}[0-9a-fA-F]{1,4}|'
-        + r'(?:(?:[0-9A-Za-z]+\.)+[0-9A-Za-z]+)'
-        + r')\]?:?'
-        + r'(?P<port>\d{1,6})?'
-        + r'(?:\;(?P<params>[^\?]*))?'
-        + r'(?:\?(?P<headers>.*))?'
-        )
-    to_re = uri_re.search(to)
-    if to_re:
-        return to_re.group("user").lower()
-    return None
+    to = get_to(params)
+    return to.uri.user.lower() if to.uri else None
 
 
 def _dialplan_match(regex, string):
@@ -76,7 +84,9 @@ def get_ai_flavor_default(user):
     """ Returns the default algorithm for AI choosing """
     # remove disabled engines
     keys = [k for k, _ in FLAVORS.items() if
-            not Config.get(k).getboolean("disabled", f"{k.upper()}_DISABLE", False)]
+            not Config.get(k).getboolean("disabled",
+                                         f"{k.upper()}_DISABLE",
+                                         False)]
     if user in keys:
         return user
     hash_index = hash(user) % len(keys)
@@ -95,7 +105,9 @@ def get_ai_flavor(params):
     for flavor in Config.sections():
         if flavor not in FLAVORS:
             continue
-        if Config.get(flavor).getboolean("disabled", f"{flavor.upper()}_DISABLE", False):
+        if Config.get(flavor).getboolean("disabled",
+                                         f"{flavor.upper()}_DISABLE",
+                                         False):
             continue
         dialplans = Config.get(flavor).get("match")
         if not dialplans:

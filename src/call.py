@@ -27,7 +27,6 @@ import logging
 import datetime
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
-from opensips.mi import OpenSIPSMI, OpenSIPSMIException
 from config import Config
 
 from rtp import decode_rtp_packet, generate_rtp_packet
@@ -37,8 +36,7 @@ from utils import get_ai
 class Call():  # pylint: disable=too-many-instance-attributes
     """ Class that handles a call """
     def __init__(self,  # pylint: disable=too-many-arguments
-                 b2b_key, sdp_str,
-                 c: OpenSIPSMI,
+                 b2b_key, sdp: SessionDescription,
                  flavor: str):
         try:
             hostname = socket.gethostbyname(socket.gethostname())
@@ -47,19 +45,13 @@ class Call():  # pylint: disable=too-many-instance-attributes
         host_ip = Config.engine('rtp_ip', 'RTP_IP', hostname)
 
         self.b2b_key = b2b_key
-        self.mi_conn = c
-
-        # remove rtcp line, since the parser throws an error on it
-        sdp_str = "\n".join([line for line in sdp_str.split("\n")
-                             if not line.startswith("a=rtcp:")])
-
-        sdp = SessionDescription.parse(sdp_str)
 
         if sdp.media[0].host:
             self.client_addr = sdp.media[0].host
         else:
             self.client_addr = sdp.host
         self.client_port = sdp.media[0].port
+        self.paused = False
 
         self.rtp = Queue()
         self.stop_event = asyncio.Event()
@@ -72,7 +64,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.serversock.bind((host_ip, 0))
 
-        sdp = self.get_new_sdp(sdp, host_ip)
+        self.sdp = self.get_new_sdp(sdp, host_ip)
 
         asyncio.create_task(self.ai.start())
 
@@ -80,15 +72,10 @@ class Call():  # pylint: disable=too-many-instance-attributes
         loop.add_reader(self.serversock.fileno(), self.read_rtp)
         asyncio.create_task(self.send_rtp())
         logging.info("handling %s using %s AI", b2b_key, flavor)
-        try:
-            self.mi_conn.execute('ua_session_reply', {'key': b2b_key,
-                                                      'method': 'INVITE',
-                                                      'code': 200,
-                                                      'reason': 'OK',
-                                                      'body': str(sdp)})
-        except OpenSIPSMIException as e:
-            logging.error("Error sending 200 OK: %s", e)
-            raise
+
+    def get_body(self):
+        """ Retrieves the SDP built """
+        return str(self.sdp)
 
     def get_new_sdp(self, sdp, host_ip):
         """ Gets a new SDP to be sent back in 200 OK """
@@ -107,9 +94,29 @@ class Call():  # pylint: disable=too-many-instance-attributes
 
         return sdp
 
+    def resume(self):
+        """ Resumes the call's audio """
+        if not self.paused:
+            return
+        logging.info("resuming %s", self.b2b_key)
+        self.paused = False
+        self.sdp.media[0].direction = "sendrecv"
+
+    def pause(self):
+        """ Pauses the call's audio """
+        if self.paused:
+            return
+        logging.info("pausing %s", self.b2b_key)
+        self.sdp.media[0].direction = "recvonly"
+
+        self.paused = True
+
     def read_rtp(self):
         """ Reads a RTP packet """
         data = self.serversock.recv(1024)
+        # Drop requests if paused
+        if self.paused:
+            return
         try:
             packet = decode_rtp_packet(data.hex())
             audio = bytes.fromhex(packet['payload'])
@@ -133,25 +140,28 @@ class Call():  # pylint: disable=too-many-instance-attributes
             try:
                 payload = self.rtp.get_nowait()
             except Empty:
-                payload = self.codec.get_silence()
-            rtp_packet = generate_rtp_packet({
-                'version': 2,
-                'padding': 0,
-                'extension': 0,
-                'csi_count': 0,
-                'marker': marker,
-                'payload_type': payload_type,
-                'sequence_number': sequence_number,
-                'timestamp': timestamp,
-                'ssrc': ssrc,
-                'payload': payload.hex()
-            })
-            marker = 0
-            sequence_number += 1
+                if not self.paused:
+                    payload = self.codec.get_silence()
+                else:
+                    payload = None
+            if payload:
+                rtp_packet = generate_rtp_packet({
+                    'version': 2,
+                    'padding': 0,
+                    'extension': 0,
+                    'csi_count': 0,
+                    'marker': marker,
+                    'payload_type': payload_type,
+                    'sequence_number': sequence_number,
+                    'timestamp': timestamp,
+                    'ssrc': ssrc,
+                    'payload': payload.hex()
+                })
+                marker = 0
+                sequence_number += 1
+                self.serversock.sendto(bytes.fromhex(rtp_packet),
+                                       (self.client_addr, self.client_port))
             timestamp += ts_inc
-
-            self.serversock.sendto(bytes.fromhex(rtp_packet),
-                                   (self.client_addr, self.client_port))
             next_time = last_time + datetime.timedelta(milliseconds=ptime)
             now = datetime.datetime.now()
             drift = (next_time - now).total_seconds()

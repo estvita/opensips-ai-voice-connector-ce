@@ -76,7 +76,7 @@ def get_ai_flavor_default(user):
     """ Returns the default algorithm for AI choosing """
     # remove disabled engines
     keys = [k for k, _ in FLAVORS.items() if
-            not Config.get(k).getboolean("disabled", False)]
+            not Config.get(k).getboolean("disabled", f"{k.upper()}_DISABLE", False)]
     if user in keys:
         return user
     hash_index = hash(user) % len(keys)
@@ -95,7 +95,7 @@ def get_ai_flavor(params):
     for flavor in Config.sections():
         if flavor not in FLAVORS:
             continue
-        if Config.get(flavor).getboolean("disabled", False):
+        if Config.get(flavor).getboolean("disabled", f"{flavor.upper()}_DISABLE", False):
             continue
         dialplans = Config.get(flavor).get("match")
         if not dialplans:

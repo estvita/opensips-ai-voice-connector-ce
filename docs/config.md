@@ -73,7 +73,7 @@ Parameters that are common to all flavors are:
 
 | Parameter  | Mandatory | Description | Default |
 |------------|-----------|-------------|---------|
-| `disabled` | no | Indicates whether the engine should be disabled or not | `false` |
+| `disabled` | no | Indicates whether the engine should be disabled or not. Can also be set using the `{FLAVOR}_DISABLE` environment variable (e.g. `DEEPGRAM_DISABLE`)| `false` |
 | `match` | no | A regular expression, or a list of regular expressions that are being used to [select](ai-flavors.md#flavor-selection) when to use the corresponding AI flavor | empty |
 
 ## Example

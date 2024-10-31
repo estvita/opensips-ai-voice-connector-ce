@@ -69,3 +69,4 @@ The following parameters can be tuned for this engine:
 | `deepgram` | `language` | `DEEPGRAM_LANGUAGE`   | no | [Deepgram's supported language](https://developers.deepgram.com/docs/models-languages-overview) used for speech transcoding | `en-US` |
 | `deepgram` | `voice` | `DEEPGRAM_VOICE`   | no | [Deepgram's voice](https://developers.deepgram.com/docs/tts-models) used for speaking back the response | `aura-asteria-en` |
 | `deepgram` | `welcome_message` | `DEEPGRAM_WELCOME_MSG`   | no | A welcome message to be played back to the user when the call starts | `` |
+| `deepgram` | `disable` | `DEEPGRAM_DISABLE`   | no | Disables the flavor | false |

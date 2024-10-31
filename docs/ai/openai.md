@@ -27,3 +27,4 @@ The following parameters can be tuned for this engine:
 |----------|--------------|-------------|-----------|-------------|---------|
 | `openai` | `key` or `openai_key` | `OPENAI_API_KEY`   | **yes** | [OpenAI API](https://platform.openai.com/) key | not provided |
 | `openai` | `model`               | `OPENAI_API_MODEL` | no | [OpenAI Realtime Model](https://platform.openai.com/docs/models/gpt-4o-realtime) used | `gpt-4o-realtime-preview-2024-10-01` |
+| `openai` | `disable` | `OPENAI_DISABLE`   | no | Disables the flavor | false |

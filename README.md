@@ -52,9 +52,11 @@ Check out the [AI Flavors](docs/ai-flavors.md) page for more information.
 
 ## Configuration
 
-Engine configuration is done through a separate configuration fine, or through
-environment variables. See the [Configuration](docs/configuration.md) page for
-all the details.
+Engine configuration is done through a separate configuration file, or through
+environment variables. Using a configuration file is recommended, as it allows
+for more detailed settings. Also, if you use both methods, configuration file
+settings will override environment variables. 
+See the [Configuration](docs/configuration.md) page for all the details.
 
 
 ## Getting Started
@@ -64,7 +66,7 @@ found in the [docker/](docker) directory. In order to use them, you need to
 setup [Docker](https://www.docker.com/) on your host and then run:
 
 ``` shell
-git clone --recursive https://github.com/OpenSIPS/opensips-ai-voice-connector-ce.git
+git clone https://github.com/OpenSIPS/opensips-ai-voice-connector-ce.git
 cd opensips-ai-voice-connector-ce/docker
 # edit the .env file and adjust the settings accordingly
 # alternatively, create a configuration file
@@ -72,6 +74,7 @@ docker compose up
 ```
 
 At this point, you should have the engine up and running.
+A more detailed guide can be found on the [Getting Started](docs/getting-started.md) page.
 
 
 ### Testing
@@ -86,6 +89,7 @@ to an AI assistent - ask him a question and get a response back.
 
 Documentation pages contain the following topics:
 
+* [Getting Started](docs/getting-started.md) - How to get the engine up and running
 * [Configuration](docs/config.md) - Information about configuration file
 * [Implementation](docs/implementation.md) - Implementation details
 * [AI Flavors](docs/ai-flavors.md) - Different AI flavors supported

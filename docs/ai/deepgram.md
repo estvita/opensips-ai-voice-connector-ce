@@ -62,7 +62,7 @@ The following parameters can be tuned for this engine:
 
 | Section  | Parameter    | Environment | Mandatory | Description | Default |
 |----------|--------------|-------------|-----------|-------------|---------|
-| `deepgram` | `key` | `DEEPGRAM_API_KEY`   | **yes** | [OpenAI API](https://platform.openai.com/) key | not provided |
+| `deepgram` | `key` | `DEEPGRAM_API_KEY`   | **yes** | [Deepgram API](https://deepgram.com/) key | not provided |
 | `deepgram` | `chatgpt_key` or `openai_key` | `CHATGPT_API_KEY`/`OPENAI_API_KEY`   | **yes** | [OpenAI API](https://platform.openai.com/) key used for ChatGPT | not provided |
 | `deepgram` | `chatgpt_model` | `CHATGPT_API_MODEL` | no | [OpenAI Model](https://platform.openai.com/docs/models/gpt-4o) used for ChatGPT text interaction | `gpt-4o` |
 | `deepgram` | `speech_model` | `DEEPGRAM_SPEECH_MODEL` | no | [Deepgram's speech detection model](https://developers.deepgram.com/docs/models-languages-overview) | `nova-2-conversationalai` |

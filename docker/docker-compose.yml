@@ -1,17 +1,19 @@
 services:
-  app:
-    container_name: conversational-ai
+  engine:
+    container_name: ai-voice-connector-engine
     build:
       context: ../
       dockerfile: ./docker/Dockerfile
     network_mode: host
+    environment:
+      CONFIG_FILE: /app/src/config.ini
     env_file:
       - .env
     volumes:
       - ../src:/app/src/
-  
+
   opensips:
-    container_name: opensips-conv-ai
+    container_name: ai-voice-connector-opensips
     image: opensips/opensips:latest
     volumes:
       - ../cfg/:/etc/opensips/

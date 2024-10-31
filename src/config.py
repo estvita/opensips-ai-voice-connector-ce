@@ -84,7 +84,9 @@ class Config():
     @staticmethod
     def get(section):
         """ Retrieves a specific section from the config file """
-        return ConfigSection(_Config[section] if section in _Config else {})
+        if section not in _Config:
+            _Config.add_section(section)
+        return ConfigSection(_Config[section])
 
     @staticmethod
     def engine(option, env=None, fallback=None):

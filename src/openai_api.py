@@ -43,10 +43,6 @@ OPENAI_HEADERS = {
 }
 
 
-class UnsupportedCodec(Exception):
-    """ Exception for Unsupported Codecs errors """
-
-
 class OpenAI(AIEngine):
 
     """ Implements WS communication with OpenAI """

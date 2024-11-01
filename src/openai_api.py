@@ -26,6 +26,7 @@ OpenAI WS communication
 import json
 import base64
 import logging
+from queue import Empty
 from websockets.asyncio.client import connect
 from ai import AIEngine
 from config import Config
@@ -73,6 +74,9 @@ class OpenAI(AIEngine):
                 },
                 "input_audio_format": self.codec_name,
                 "output_audio_format": self.codec_name,
+                "input_audio_transcription": {
+                    "model": "whisper-1",
+                },
         }
         await self.ws.send(json.dumps({"type": "session.update",
                                       "session": self.session}))
@@ -83,12 +87,27 @@ class OpenAI(AIEngine):
                 media = base64.b64decode(msg["delta"])
                 for packet in self.codec.parse(media):
                     self.queue.put_nowait(packet)
+            elif t == "conversation.item.created":
+                if msg["item"]["status"] == "completed":
+                    self.drain_queue()
+            elif t == "conversation.item.input_audio_transcription.completed":
+                logging.info("Speaker: %s", msg["transcript"].rstrip())
             elif t == "response.audio_transcript.done":
-                logging.info(msg["transcript"])
+                logging.info("Engine: %s", msg["transcript"])
             elif t == "error":
                 logging.info(msg)
             else:
                 logging.info(t)
+
+    def drain_queue(self):
+        """ Drains the playback queue """
+        count = 0
+        try:
+            while self.queue.get_nowait():
+                count += 1
+        except Empty:
+            if count > 0:
+                logging.info("dropping %d packets", count)
 
     async def send(self, audio):
         """ Sends audio to OpenAI """

@@ -42,6 +42,8 @@ OPENAI_HEADERS = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Beta": "realtime=v1"
 }
+OPENAI_VOICE = cfg.get(["voice", "openai_voice"], "OPENAI_VOICE", "alloy")
+OPENAI_INSTR = cfg.get("instructions", "OPENAI_INSTRUCTIONS")
 
 
 class OpenAI(AIEngine):
@@ -77,7 +79,10 @@ class OpenAI(AIEngine):
                 "input_audio_transcription": {
                     "model": "whisper-1",
                 },
+                "voice": OPENAI_VOICE,
         }
+        if OPENAI_INSTR:
+            self.session["instructions"] = OPENAI_INSTR
         await self.ws.send(json.dumps({"type": "session.update",
                                       "session": self.session}))
         async for smsg in self.ws:

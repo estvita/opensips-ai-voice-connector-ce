@@ -28,10 +28,16 @@ import datetime
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
 from config import Config
+import secrets
 
 from rtp import decode_rtp_packet, generate_rtp_packet
 from utils import get_ai
 
+rtp_cfg = Config.get("rtp")
+min_rtp_port = int(rtp_cfg.get("min_port", "RTP_MIN_PORT", "35000"))
+max_rtp_port = int(rtp_cfg.get("max_port", "RTP_MAX_PORT", "65000"))
+
+available_ports = set(range(min_rtp_port, max_rtp_port))
 
 class Call():  # pylint: disable=too-many-instance-attributes
     """ Class that handles a call """
@@ -62,7 +68,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.codec = self.ai.get_codec()
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.serversock.bind((host_ip, 0))
+        self.bind(host_ip)
 
         self.sdp = self.get_new_sdp(sdp, host_ip)
 
@@ -72,6 +78,15 @@ class Call():  # pylint: disable=too-many-instance-attributes
         loop.add_reader(self.serversock.fileno(), self.read_rtp)
         asyncio.create_task(self.send_rtp())
         logging.info("handling %s using %s AI", b2b_key, flavor)
+
+    def bind(self, host_ip):
+        """ Binds the call to a port """
+        if not available_ports:
+            raise Exception("No available ports")
+        port = secrets.choice(list(available_ports))
+        available_ports.remove(port)
+        self.serversock.bind((host_ip, port))
+        print(f"Bound to {host_ip}:{port}")
 
     def get_body(self):
         """ Retrieves the SDP built """
@@ -173,7 +188,9 @@ class Call():  # pylint: disable=too-many-instance-attributes
         logging.info("Call %s closing", self.b2b_key)
         loop = asyncio.get_running_loop()
         loop.remove_reader(self.serversock.fileno())
+        free_port = self.serversock.getsockname()[1]
         self.serversock.close()
+        available_ports.add(free_port)
         self.stop_event.set()
         await self.ai.close()
 

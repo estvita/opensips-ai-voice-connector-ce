@@ -66,6 +66,8 @@ Parameters used to tune global behavior of the engine are:
 | `engine` | `event_port` | `EVENT_PORT`| no | The port used to listen for events from OpenSIPS | random |
 | `opensips` | `ip`   | `MI_IP`  | no | OpenSIPS MI Datagram IP   | `127.0.0.1` |
 | `opensips` | `port` | `MI_PORT`| no | OpenSIPS MI Datagram Port | `8080` |
+| `rtp` | `min_port` | `RTP_MIN_PORT` | no | Lower limit of RTP ports range | `35000` |
+| `rtp` | `max_port` | `RTP_MAX_PORT` | no | Upper limit of RTP ports range | `65000` |
 
 ## Common Flavor Parameters
 

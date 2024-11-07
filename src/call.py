@@ -140,8 +140,6 @@ class Call():  # pylint: disable=too-many-instance-attributes
                 self.client_port = adr[1]
 
             if adr[0] != self.client_addr or adr[1] != self.client_port:
-                logging.warning("Received RTP from unknown source %s:%s",
-                                adr[0], adr[1])
                 return
         except socket.timeout as e:
             logging.exception(e)

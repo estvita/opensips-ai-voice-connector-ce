@@ -69,11 +69,13 @@ class Call():  # pylint: disable=too-many-instance-attributes
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.bind(host_ip)
+        self.serversock.setblocking(False)
 
         self.sdp = self.get_new_sdp(sdp, host_ip)
 
         asyncio.create_task(self.ai.start())
 
+        self.first_packet = True
         loop = asyncio.get_running_loop()
         loop.add_reader(self.serversock.fileno(), self.read_rtp)
         asyncio.create_task(self.send_rtp())
@@ -128,7 +130,23 @@ class Call():  # pylint: disable=too-many-instance-attributes
 
     def read_rtp(self):
         """ Reads a RTP packet """
-        data = self.serversock.recv(1024)
+
+        try:
+            data, adr = self.serversock.recvfrom(4096)
+
+            if self.first_packet:
+                self.first_packet = False
+                self.client_addr = adr[0]
+                self.client_port = adr[1]
+
+            if adr[0] != self.client_addr or adr[1] != self.client_port:
+                logging.warning("Received RTP from unknown source %s:%s",
+                                adr[0], adr[1])
+                return
+        except socket.timeout as e:
+            logging.exception(e)
+            return
+
         # Drop requests if paused
         if self.paused:
             return

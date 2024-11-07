@@ -49,7 +49,7 @@ Config.init(parsed_args.config)
 
 logging.basicConfig(
     level=logging.INFO,  # Set level to INFO or DEBUG for more verbosity
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - tid: %(thread)d - %(levelname)s - %(message)s',
 )
 
 if __name__ == '__main__':

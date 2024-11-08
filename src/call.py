@@ -78,7 +78,6 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.first_packet = True
         loop = asyncio.get_running_loop()
         loop.add_reader(self.serversock.fileno(), self.read_rtp)
-        asyncio.create_task(self.send_rtp())
         logging.info("handling %s using %s AI", b2b_key, flavor)
 
     def bind(self, host_ip):
@@ -138,6 +137,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
                 self.first_packet = False
                 self.client_addr = adr[0]
                 self.client_port = adr[1]
+                asyncio.create_task(self.send_rtp())
 
             if adr[0] != self.client_addr or adr[1] != self.client_port:
                 return

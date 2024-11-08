@@ -134,7 +134,7 @@ class PCMA(G711):
         super().__init__(params)
         self.name = 'alaw'
 
-    def get_silence(self):
+    def get_silence_byte(self):
         return b'\xD5'
 
 

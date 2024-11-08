@@ -165,9 +165,10 @@ class Call():  # pylint: disable=too-many-instance-attributes
         ptime = self.codec.ptime
         payload_type = self.codec.payload_type
         marker = 1
+        packet_no = 0
+        start_time = datetime.datetime.now()
 
         while not self.stop_event.is_set():
-            last_time = datetime.datetime.now()
             try:
                 payload = self.rtp.get_nowait()
             except Empty:
@@ -192,8 +193,11 @@ class Call():  # pylint: disable=too-many-instance-attributes
                 sequence_number += 1
                 self.serversock.sendto(bytes.fromhex(rtp_packet),
                                        (self.client_addr, self.client_port))
+
             timestamp += ts_inc
-            next_time = last_time + datetime.timedelta(milliseconds=ptime)
+            packet_no += 1
+            next_time = start_time + datetime.timedelta(milliseconds=ptime *
+                                                        packet_no)
             now = datetime.datetime.now()
             drift = (next_time - now).total_seconds()
             if drift > 0:

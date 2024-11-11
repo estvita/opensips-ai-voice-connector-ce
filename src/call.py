@@ -44,11 +44,12 @@ class Call():  # pylint: disable=too-many-instance-attributes
     def __init__(self,  # pylint: disable=too-many-arguments
                  b2b_key, sdp: SessionDescription,
                  flavor: str):
+        host_ip = rtp_cfg.get('bind_ip', 'RTP_BIND_IP')
         try:
             hostname = socket.gethostbyname(socket.gethostname())
         except socket.gaierror:  # unknown hostname
             hostname = "127.0.0.1"
-        host_ip = Config.engine('rtp_ip', 'RTP_IP', hostname)
+        rtp_ip = rtp_cfg.get('ip', 'RTP_IP', hostname)
 
         self.b2b_key = b2b_key
 
@@ -68,10 +69,11 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.codec = self.ai.get_codec()
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.bind(host_ip)
+        if host_ip:
+            self.bind(host_ip)
         self.serversock.setblocking(False)
 
-        self.sdp = self.get_new_sdp(sdp, host_ip)
+        self.sdp = self.get_new_sdp(sdp, rtp_ip)
 
         asyncio.create_task(self.ai.start())
 

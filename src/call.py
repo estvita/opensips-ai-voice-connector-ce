@@ -24,11 +24,11 @@ import random
 import socket
 import asyncio
 import logging
+import secrets
 import datetime
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
 from config import Config
-import secrets
 
 from rtp import decode_rtp_packet, generate_rtp_packet
 from utils import get_ai
@@ -39,12 +39,17 @@ max_rtp_port = int(rtp_cfg.get("max_port", "RTP_MAX_PORT", "65000"))
 
 available_ports = set(range(min_rtp_port, max_rtp_port))
 
+
+class NoAvailablePorts(Exception):
+    """ There are no available ports """
+
+
 class Call():  # pylint: disable=too-many-instance-attributes
     """ Class that handles a call """
     def __init__(self,  # pylint: disable=too-many-arguments
                  b2b_key, sdp: SessionDescription,
                  flavor: str):
-        host_ip = rtp_cfg.get('bind_ip', 'RTP_BIND_IP')
+        host_ip = rtp_cfg.get('bind_ip', 'RTP_BIND_IP', '0.0.0.0')
         try:
             hostname = socket.gethostbyname(socket.gethostname())
         except socket.gaierror:  # unknown hostname
@@ -69,8 +74,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.codec = self.ai.get_codec()
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        if host_ip:
-            self.bind(host_ip)
+        self.bind(host_ip)
         self.serversock.setblocking(False)
 
         self.sdp = self.get_new_sdp(sdp, rtp_ip)
@@ -85,11 +89,11 @@ class Call():  # pylint: disable=too-many-instance-attributes
     def bind(self, host_ip):
         """ Binds the call to a port """
         if not available_ports:
-            raise Exception("No available ports")
+            raise NoAvailablePorts()
         port = secrets.choice(list(available_ports))
         available_ports.remove(port)
         self.serversock.bind((host_ip, port))
-        print(f"Bound to {host_ip}:{port}")
+        logging.info("Bound to %s:%d", host_ip, port)
 
     def get_body(self):
         """ Retrieves the SDP built """

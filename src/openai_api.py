@@ -99,10 +99,21 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
 
         self.session = {
             "turn_detection": {
-                "type": "server_vad",
-                "silence_duration_ms": 200,
-                "threshold": 0.5,
-                "prefix_padding_ms": 300,
+                "type": self.cfg.get("turn_detection_type",
+                                     "OPENAI_TURN_DETECT_TYPE",
+                                     "server_vad"),
+                "silence_duration_ms": int(self.cfg.get(
+                    "turn_detection_silence_ms",
+                    "OPENAI_TURN_DETECT_SILENCE_MS",
+                    200)),
+                "threshold": float(self.cfg.get(
+                    "turn_detection_threshold",
+                    "OPENAI_TURN_DETECT_THRESHOLD",
+                    0.5)),
+                "prefix_padding_ms": int(self.cfg.get(
+                    "turn_detection_prefix_ms",
+                    "OPENAI_TURN_DETECT_PREFIX_MS",
+                    200)),
             },
             "input_audio_format": self.get_audio_format(),
             "output_audio_format": self.get_audio_format(),
@@ -110,6 +121,11 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 "model": "whisper-1",
             },
             "voice": self.voice,
+            "temperature": float(self.cfg.get("temperature",
+                                              "OPENAI_TEMPERATURE", 0.8)),
+            "max_response_output_tokens": self.cfg.get("max_tokens",
+                                                       "OPENAI_MAX_TOKENS",
+                                                       "inf"),
             "tools": [
                 {
                     "type": "function",
@@ -156,7 +172,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             elif t == "response.audio.done":
                 logging.info(t)
                 if len(leftovers) > 0:
-                    packet = await self.run_in_thread(self.codec.parse, None, leftovers)
+                    packet = await self.run_in_thread(
+                            self.codec.parse, None, leftovers)
                     self.queue.put_nowait(packet)
                     leftovers = b''
 

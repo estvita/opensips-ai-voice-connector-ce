@@ -38,17 +38,6 @@ from chatgpt_api import ChatGPT
 from config import Config
 from codec import get_codecs, CODECS, UnsupportedCodec
 
-cfg = Config.get("deepgram")
-CHATGPT_API_KEY = cfg.get(["chatgpt_key", "openai_key"],
-                          ["CHATGPT_API_KEY", "OPENAI_API_KEY"])
-CHATGPT_API_MODEL = cfg.get("chatgpt_model", "CHATGPT_API_MODEL", "gpt-4o")
-DEEPGRAM_API_KEY = cfg.get("key", "DEEPGRAM_API_KEY")
-DEEPGRAM_LANGUAGE = cfg.get("language", "DEEPGRAM_LANGUAGE", "en-US")
-DEEPGRAM_VOICE = cfg.get("voice", "DEEPGRAM_VOICE", "aura-asteria-en")
-DEEPGRAM_SPEECH_MODEL = cfg.get("speech_model", "DEEPGRAM_SPEECH_MODEL",
-                                "nova-2-conversationalai")
-DEEPGRAM_WELCOME = cfg.get("welcome_message", "DEEPGRAM_WELCOME_MSG")
-
 
 class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
@@ -56,11 +45,24 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     chatgpt = None
 
-    def __init__(self, call):
+    def __init__(self, call, cfg):
+
+        self.cfg = Config.get("deepgram", cfg)
+        chatgpt_key = self.cfg.get(["chatgpt_key", "openai_key"],
+                                   ["CHATGPT_API_KEY", "OPENAI_API_KEY"])
+        chatgpt_model = self.cfg.get("chatgpt_model", "CHATGPT_API_MODEL",
+                                     "gpt-4o")
 
         if not Deepgram.chatgpt:
-            Deepgram.chatgpt = ChatGPT(CHATGPT_API_KEY, CHATGPT_API_MODEL)
-        self.deepgram = DeepgramClient(DEEPGRAM_API_KEY)
+            Deepgram.chatgpt = ChatGPT(chatgpt_key, chatgpt_model)
+        self.deepgram = DeepgramClient(self.cfg.get("key",
+                                                    "DEEPGRAM_API_KEY"))
+        self.language = self.cfg.get("language", "DEEPGRAM_LANGUAGE", "en-US")
+        self.model = self.cfg.get("speech_model", "DEEPGRAM_SPEECH_MODEL",
+                                  "nova-2-conversationalai")
+        self.voice = self.cfg.get("voice", "DEEPGRAM_VOICE", "aura-asteria-en")
+        self.intro = self.cfg.get("welcome_message", "DEEPGRAM_WELCOME_MSG")
+
         self.b2b_key = call.b2b_key
         self.codec = self.choose_codec(call.sdp)
         self.queue = call.rtp
@@ -72,7 +74,7 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.buf = []
         sentences = self.buf
         call_ref = self
-        Deepgram.chatgpt.create_call(self.b2b_key, DEEPGRAM_WELCOME)
+        Deepgram.chatgpt.create_call(self.b2b_key, self.intro)
 
         async def on_text(__, result, **_):
             sentence = result.channel.alternatives[0].transcript
@@ -90,8 +92,8 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
         self.stt.on(LiveTranscriptionEvents.Transcript, on_text)
         self.transcription_options = LiveOptions(
-            model=DEEPGRAM_SPEECH_MODEL,
-            language=DEEPGRAM_LANGUAGE,
+            model=self.model,
+            language=self.language,
             punctuate=True,
             filler_words=True,
             interim_results=True,
@@ -101,7 +103,7 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
         # don't use sample_rate if we have a bitrate
         if self.codec.bitrate:
             self.speak_options = SpeakOptions(
-                model=DEEPGRAM_VOICE,
+                model=self.voice,
                 encoding=self.codec.name,
                 bit_rate=self.codec.bitrate,
                 container=self.codec.container)
@@ -144,8 +146,8 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
         if await self.stt.start(self.transcription_options) is False:
             return
 
-        if DEEPGRAM_WELCOME:
-            asyncio.create_task(self.process_speech(DEEPGRAM_WELCOME))
+        if self.intro:
+            asyncio.create_task(self.process_speech(self.intro))
 
     async def handle_phrase(self, phrase):
         """ handles the response of a phrase """

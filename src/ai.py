@@ -31,7 +31,7 @@ class AIEngine(ABC):
     codec = None
 
     @abstractmethod
-    def __init__(self, call):
+    def __init__(self, call, cfg):
         pass
 
     @abstractmethod

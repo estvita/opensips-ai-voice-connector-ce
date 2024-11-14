@@ -33,6 +33,11 @@ _Config = configparser.ConfigParser()
 class ConfigSection(dict):
     """ class that handles a config section """
 
+    def __init__(self, section, init=None):
+        super().__init__()
+        self.update(init)
+        self.update(section)
+
     def getenv(self, env, fallback=None):
         """ returns the configuration from environment """
         if not env:
@@ -82,11 +87,13 @@ class Config():
             _Config.read(config_file)
 
     @staticmethod
-    def get(section):
+    def get(section, init_data=None):
         """ Retrieves a specific section from the config file """
         if section not in _Config:
             _Config.add_section(section)
-        return ConfigSection(_Config[section])
+        if not init_data:
+            init_data = {}
+        return ConfigSection(_Config[section], init_data)
 
     @staticmethod
     def engine(option, env=None, fallback=None):

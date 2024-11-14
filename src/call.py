@@ -26,7 +26,6 @@ import asyncio
 import logging
 import secrets
 import datetime
-import secrets
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
 from config import Config
@@ -47,12 +46,12 @@ class NoAvailablePorts(Exception):
 
 class Call():  # pylint: disable=too-many-instance-attributes
     """ Class that handles a call """
-
-    def __init__(self,  # pylint: disable=too-many-arguments
+    # pylint: disable=too-many-arguments, too-many-positional-arguments
+    def __init__(self,
                  b2b_key,
                  mi_conn,
                  sdp: SessionDescription,
-                 flavor: str):
+                 flavor: str, cfg):
         host_ip = rtp_cfg.get('bind_ip', 'RTP_BIND_IP', '0.0.0.0')
         try:
             hostname = socket.gethostbyname(socket.gethostname())
@@ -76,7 +75,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.stop_event.clear()
 
         self.sdp = sdp
-        self.ai = get_ai(flavor, self)
+        self.ai = get_ai(flavor, self, cfg)
 
         self.codec = self.ai.get_codec()
 

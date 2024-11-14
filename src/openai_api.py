@@ -34,32 +34,31 @@ from ai import AIEngine
 from codec import get_codecs, CODECS, UnsupportedCodec
 from config import Config
 
-cfg = Config.get("openai")
-OPENAI_API_MODEL = cfg.get("model", "OPENAI_API_MODEL",
-                           "gpt-4o-realtime-preview-2024-10-01")
-URL = f"wss://api.openai.com/v1/realtime?model={OPENAI_API_MODEL}"
-URL = cfg.get("url", "OPENAI_URL", URL)
-OPENAI_API_KEY = cfg.get(["key", "openai_key"], "OPENAI_API_KEY")
-OPENAI_HEADERS = {
-    "Authorization": f"Bearer {OPENAI_API_KEY}",
-    "OpenAI-Beta": "realtime=v1"
-}
-OPENAI_VOICE = cfg.get(["voice", "openai_voice"], "OPENAI_VOICE", "alloy")
-OPENAI_INSTR = cfg.get("instructions", "OPENAI_INSTRUCTIONS")
-OPENAI_INTRO = cfg.get("welcome_message", "OPENAI_WELCOME_MSG")
+OPENAI_API_MODEL = "gpt-4o-realtime-preview-2024-10-01"
+OPENAI_URL_FORMAT = "wss://api.openai.com/v1/realtime?model={}"
 
 
 class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     """ Implements WS communication with OpenAI """
 
-    def __init__(self, call):
+    def __init__(self, call, cfg):
         self.codec = self.choose_codec(call.sdp)
         self.queue = call.rtp
         self.call = call
         self.ws = None
         self.session = None
         self.intro = None
+        self.cfg = Config.get("openai", cfg)
+        self.model = self.cfg.get("model", "OPENAI_API_MODEL",
+                                  OPENAI_API_MODEL)
+        self.url = self.cfg.get("url", "OPENAI_URL",
+                                OPENAI_URL_FORMAT.format(self.model))
+        self.key = self.cfg.get(["key", "openai_key"], "OPENAI_API_KEY")
+        self.voice = self.cfg.get(["voice", "openai_voice"],
+                                  "OPENAI_VOICE", "alloy")
+        self.instructions = self.cfg.get("instructions", "OPENAI_INSTRUCTIONS")
+        self.intro = self.cfg.get("welcome_message", "OPENAI_WELCOME_MSG")
 
         # normalize codec
         if self.codec.name == "mulaw":
@@ -84,7 +83,11 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     async def start(self):
         """ Starts OpenAI connection and logs messages """
-        self.ws = await connect(URL, additional_headers=OPENAI_HEADERS)
+        openai_headers = {
+                "Authorization": f"Bearer {self.key}",
+                "OpenAI-Beta": "realtime=v1"
+        }
+        self.ws = await connect(self.url, additional_headers=openai_headers)
         try:
             json.loads(await self.ws.recv())
         except ConnectionClosedOK:
@@ -106,13 +109,14 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             "input_audio_transcription": {
                 "model": "whisper-1",
             },
-            "voice": OPENAI_VOICE,
+            "voice": self.voice,
             "tools": [
                 {
                     "type": "function",
                     "name": "terminate_call",
                     "description":
-                        "Call me when any of the session's parties want to terminate the call."
+                        "Call me when any of the session's parties want "
+                        "to terminate the call."
                         "Always say goodbye before hanging up."
                         "Send the audio first, then call this function.",
                     "parameters": {
@@ -124,14 +128,15 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             ],
             "tool_choice": "auto",
         }
-        if OPENAI_INSTR:
-            self.session["instructions"] = OPENAI_INSTR
+        if self.instructions:
+            self.session["instructions"] = self.instructions
         await self.ws.send(json.dumps({"type": "session.update",
                                       "session": self.session}))
 
-        if OPENAI_INTRO:
+        if self.intro:
             self.intro = {
-                "instructions": "Please greet the user with the following: " + OPENAI_INTRO}
+                "instructions": "Please greet the user with the following: " +
+                self.intro}
             await self.ws.send(json.dumps({"type": "response.create",
                                            "response": self.intro}))
         await self.handle_command()

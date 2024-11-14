@@ -21,6 +21,7 @@
 
 """ Main module that starts the Deepgram AI integration """
 
+import json
 import signal
 import asyncio
 import logging
@@ -55,6 +56,23 @@ def mi_reply(key, method, code, reason, body=None):
     mi_conn.execute('ua_session_reply', params)
 
 
+def parse_params(params):
+    """ Parses paraameters received in a call """
+    flavor = None
+    extra_params = None
+    if "extra_params" in params and params["extra_params"]:
+        extra_params = json.loads(params["extra_params"])
+        if extra_params and "flavor" in extra_params:
+            flavor = extra_params["flavor"]
+    if not flavor:
+        flavor = get_ai_flavor(params)
+    if extra_params and flavor in extra_params:
+        cfg = extra_params[flavor]
+    else:
+        cfg = None
+    return flavor, cfg
+
+
 def handle_call(call, key, method, params):
     """ Handles a SIP call """
 
@@ -83,7 +101,8 @@ def handle_call(call, key, method, params):
             return
 
         try:
-            new_call = Call(key, mi_conn, sdp, get_ai_flavor(params))
+            flavor, cfg = parse_params(params)
+            new_call = Call(key, mi_conn, sdp, flavor, cfg)
             calls[key] = new_call
             mi_reply(key, method, 200, 'OK', new_call.get_body())
         except UnsupportedCodec:

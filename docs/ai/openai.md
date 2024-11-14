@@ -30,3 +30,4 @@ The following parameters can be tuned for this engine:
 | `openai` | `disable` | `OPENAI_DISABLE`   | no | Disables the flavor | false |
 | `openai` | `voice`   | `OPENAI_VOICE`     | no | Configures the [OpenAI voice](https://platform.openai.com/docs/guides/text-to-speech#voice-options) | `alloy` |
 | `openai` | `instructions`   | `OPENAI_INSTRUCTIONS`     | no | Configures the OpenAI module instructions | default/none |
+| `openai` | `welcome_message` | `OPENAI_WELCOME_MSG`   | no | A welcome message to be played back to the user when the call starts | no message |

@@ -26,6 +26,7 @@ import asyncio
 import logging
 import secrets
 import datetime
+import secrets
 from queue import Queue, Empty
 from aiortc.sdp import SessionDescription
 from config import Config
@@ -46,8 +47,11 @@ class NoAvailablePorts(Exception):
 
 class Call():  # pylint: disable=too-many-instance-attributes
     """ Class that handles a call """
+
     def __init__(self,  # pylint: disable=too-many-arguments
-                 b2b_key, sdp: SessionDescription,
+                 b2b_key,
+                 mi_conn,
+                 sdp: SessionDescription,
                  flavor: str):
         host_ip = rtp_cfg.get('bind_ip', 'RTP_BIND_IP', '0.0.0.0')
         try:
@@ -57,6 +61,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         rtp_ip = rtp_cfg.get('ip', 'RTP_IP', hostname)
 
         self.b2b_key = b2b_key
+        self.mi_conn = mi_conn
 
         if sdp.media[0].host:
             self.client_addr = sdp.media[0].host
@@ -64,12 +69,14 @@ class Call():  # pylint: disable=too-many-instance-attributes
             self.client_addr = sdp.host
         self.client_port = sdp.media[0].port
         self.paused = False
+        self.terminated = False
 
         self.rtp = Queue()
         self.stop_event = asyncio.Event()
         self.stop_event.clear()
 
-        self.ai = get_ai(flavor, b2b_key, sdp, self.rtp)
+        self.sdp = sdp
+        self.ai = get_ai(flavor, self)
 
         self.codec = self.ai.get_codec()
 
@@ -178,6 +185,9 @@ class Call():  # pylint: disable=too-many-instance-attributes
             try:
                 payload = self.rtp.get_nowait()
             except Empty:
+                if self.terminated:
+                    self.terminate()
+                    return
                 if not self.paused:
                     payload = self.codec.get_silence()
                 else:
@@ -219,5 +229,11 @@ class Call():  # pylint: disable=too-many-instance-attributes
         available_ports.add(free_port)
         self.stop_event.set()
         await self.ai.close()
+
+    def terminate(self):
+        """ Terminates the call """
+        logging.info("Terminating call %s", self.b2b_key)
+        self.mi_conn.execute("ua_session_terminate", {"key": self.b2b_key})
+        asyncio.create_task(self.close())
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

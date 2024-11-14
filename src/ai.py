@@ -31,7 +31,7 @@ class AIEngine(ABC):
     codec = None
 
     @abstractmethod
-    def __init__(self, key, codec, queue):
+    def __init__(self, call):
         pass
 
     @abstractmethod
@@ -45,6 +45,10 @@ class AIEngine(ABC):
     @abstractmethod
     async def close(self):
         """ closes the session """
+
+    @abstractmethod
+    def choose_codec(self, sdp):
+        """ Returns the preferred codec from a list """
 
     def get_codec(self):
         """ returns the chosen codec """

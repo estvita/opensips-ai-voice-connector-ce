@@ -35,8 +35,8 @@ from deepgram import (  # pylint: disable=import-error
 
 from ai import AIEngine
 from chatgpt_api import ChatGPT
-from codec import get_match_codec
 from config import Config
+from codec import get_codecs, CODECS, UnsupportedCodec
 
 cfg = Config.get("deepgram")
 CHATGPT_API_KEY = cfg.get(["chatgpt_key", "openai_key"],
@@ -56,14 +56,14 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     chatgpt = None
 
-    def __init__(self, key, sdp, queue):
+    def __init__(self, call):
 
         if not Deepgram.chatgpt:
             Deepgram.chatgpt = ChatGPT(CHATGPT_API_KEY, CHATGPT_API_MODEL)
         self.deepgram = DeepgramClient(DEEPGRAM_API_KEY)
-        self.b2b_key = key
-        self.codec = get_match_codec(sdp, ["pcmu", "pcma", "opus"])
-        self.queue = queue
+        self.b2b_key = call.b2b_key
+        self.codec = self.choose_codec(call.sdp)
+        self.queue = call.rtp
         self.stt = self.deepgram.listen.asyncwebsocket.v("1")
         self.tts = self.deepgram.speak.asyncrest.v("1")
         # used to serialize the speech events
@@ -90,14 +90,14 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
 
         self.stt.on(LiveTranscriptionEvents.Transcript, on_text)
         self.transcription_options = LiveOptions(
-                model=DEEPGRAM_SPEECH_MODEL,
-                language=DEEPGRAM_LANGUAGE,
-                punctuate=True,
-                filler_words=True,
-                interim_results=True,
-                utterance_end_ms="1000",
-                encoding=self.codec.name,
-                sample_rate=self.codec.sample_rate)
+            model=DEEPGRAM_SPEECH_MODEL,
+            language=DEEPGRAM_LANGUAGE,
+            punctuate=True,
+            filler_words=True,
+            interim_results=True,
+            utterance_end_ms="1000",
+            encoding=self.codec.name,
+            sample_rate=self.codec.sample_rate)
         # don't use sample_rate if we have a bitrate
         if self.codec.bitrate:
             self.speak_options = SpeakOptions(
@@ -111,6 +111,22 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
                 encoding=self.codec.name,
                 sample_rate=self.codec.sample_rate,
                 container=self.codec.container)
+
+    def choose_codec(self, sdp):
+        """ Returns the preferred codec from a list """
+        codecs = get_codecs(sdp)
+        # try with Opus first
+        cmap = {c.name.lower(): c for c in codecs}
+        if "opus" in cmap:
+            codec = CODECS["opus"](cmap["opus"])
+            if codec.sample_rate == 48000:
+                return codec
+
+        for codec in ["pcma", "pcmu"]:
+            if codec in cmap:
+                return CODECS[codec](cmap[codec])
+
+        raise UnsupportedCodec("No supported codec found")
 
     async def send(self, audio):
         """ Sends audio to Deepgram """

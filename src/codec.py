@@ -21,7 +21,6 @@
 
 """ Module that implements a generic codec """
 
-import logging
 from abc import ABC, abstractmethod
 from aiortc import RTCRtpCodecParameters
 from opus import OggOpus
@@ -33,6 +32,7 @@ class UnsupportedCodec(Exception):
 
 class GenericCodec(ABC):
     """ Generic Abstract class for a codec """
+
     def __init__(self, params, ptime=20):
         self.params = params
         self.ptime = ptime
@@ -49,26 +49,27 @@ class GenericCodec(ABC):
         """ Returns a silence packet """
 
     @abstractmethod
-    def parse(self, data):
+    def parse(self, data, leftovers):
         """ Parses codec packets """
 
 
 class Opus(GenericCodec):
     """ Opus codec handling """
+
     def __init__(self, params):
         super().__init__(params)
-
+        if 'sprop-maxcapturerate' in params.parameters:
+            self.sample_rate = int(params.parameters['sprop-maxcapturerate'])
         self.name = 'opus'
-        self.sample_rate = 48000
         self.bitrate = 96000
         self.container = 'ogg'
 
     async def process_response(self, response, queue):
         async for data in response.aiter_bytes():
-            for packet in self.parse(data):
+            for packet in self.parse(data, None):
                 queue.put_nowait(packet)
 
-    def parse(self, data):
+    def parse(self, data, leftovers):
         return OggOpus(data).packets()
 
     def get_silence(self):
@@ -77,6 +78,7 @@ class Opus(GenericCodec):
 
 class G711(GenericCodec):
     """ Generic G711 Codec handling """
+
     def __init__(self, params):
         super().__init__(params)
 
@@ -86,25 +88,31 @@ class G711(GenericCodec):
         self.name = "g711"
 
     async def process_response(self, response, queue):
+        leftovers = b''
         async for data in response.aiter_bytes():
-            for payload in self.parse(data):
-                queue.put_nowait(payload)
+            packets, leftovers = self.parse(data, leftovers)
+            for packet in packets:
+                queue.put_nowait(packet)
+        packet = self.parse(None, leftovers)
 
-    def parse(self, data):
+    def parse(self, data, leftovers):
         chunk_size = self.get_payload_len()
-        packets = []
-        while len(data) > 0:
-            payload = data[:chunk_size]
-            data = data[chunk_size:]
 
-            if len(payload) == 0:
-                break
-            if len(payload) < chunk_size:
-                # fill with silence
-                remain = chunk_size - len(payload)
-                payload = payload + self.get_silence_byte() * remain
-            packets.append(payload)
-        return packets
+        if not data:
+            data = leftovers
+            data += self.get_silence_byte() * (chunk_size - len(data))
+            return data
+
+        data = leftovers + data
+
+        chunks = [data[i:i + chunk_size]
+                  for i in range(0, len(data), chunk_size)]
+        if len(chunks[-1]) < chunk_size:
+            leftovers = chunks.pop()
+        else:
+            leftovers = b''
+
+        return chunks, leftovers
 
     def get_silence(self):
         return self.get_silence_byte() * self.get_payload_len()
@@ -120,6 +128,7 @@ class G711(GenericCodec):
 
 class PCMU(G711):
     """ PCMU codec handling """
+
     def __init__(self, params):
         super().__init__(params)
         self.name = 'mulaw'
@@ -130,6 +139,7 @@ class PCMU(G711):
 
 class PCMA(G711):
     """ PCMA codec handling """
+
     def __init__(self, params):
         super().__init__(params)
         self.name = 'alaw'
@@ -138,33 +148,27 @@ class PCMA(G711):
         return b'\xD5'
 
 
-def get_match_codec(sdp, supported_codecs):
-    """ Returns the codec to be used """
-    logging.debug(sdp)
-    logging.debug(sdp.media[0].rtp.codecs)
+def get_codecs(sdp):
+    """ Returns the codecs list """
 
-    for codec in sdp.media[0].rtp.codecs:
-        if codec.name.lower() in supported_codecs:
-            break
-    else:
-        # try to find based on fmt - default values
-        for pt in sdp.media[0].fmt:
-            if pt in [0, 8]:
-                mime = f"audio/PCM{'U' if pt == 0 else 'A'}"
-                codec = RTCRtpCodecParameters(mimeType=mime,
-                                              clockRate=8000,
-                                              payloadType=pt)
-                break
-        else:
-            raise UnsupportedCodec("no common codecs")
+    codecs = sdp.media[0].rtp.codecs
 
-    codec_name = codec.name.lower()
-    if codec_name == "pcmu":
-        return PCMU(codec)
-    if codec_name == "pcma":
-        return PCMA(codec)
-    if codec_name == "opus":
-        return Opus(codec)
-    raise UnsupportedCodec("no codec match")
+    for pt in sdp.media[0].fmt:
+        if pt in [0, 8]:
+            if pt in [codec.payloadType for codec in codecs]:
+                continue
+            mime = f"audio/PCM{'U' if pt == 0 else 'A'}"
+            codec = RTCRtpCodecParameters(mimeType=mime,
+                                          clockRate=8000,
+                                          payloadType=pt)
+            codecs.append(codec)
+    return codecs
+
+
+CODECS = {
+    "opus": Opus,
+    "pcma": PCMA,
+    "pcmu": PCMU,
+}
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

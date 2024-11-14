@@ -55,7 +55,7 @@ Check out the [AI Flavors](docs/ai-flavors.md) page for more information.
 Engine configuration is done through a separate configuration file, or through
 environment variables. Using a configuration file is recommended, as it allows
 for more detailed settings. Also, if you use both methods, configuration file
-settings will override environment variables. 
+settings will override environment variables.
 See the [Configuration](docs/configuration.md) page for all the details.
 
 

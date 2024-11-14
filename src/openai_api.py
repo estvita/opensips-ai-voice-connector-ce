@@ -26,36 +26,40 @@ OpenAI WS communication
 import json
 import base64
 import logging
+import asyncio
 from queue import Empty
 from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
 from ai import AIEngine
+from codec import get_codecs, CODECS, UnsupportedCodec
 from config import Config
-from codec import get_match_codec
-
 
 cfg = Config.get("openai")
 OPENAI_API_MODEL = cfg.get("model", "OPENAI_API_MODEL",
                            "gpt-4o-realtime-preview-2024-10-01")
 URL = f"wss://api.openai.com/v1/realtime?model={OPENAI_API_MODEL}"
+URL = cfg.get("url", "OPENAI_URL", URL)
 OPENAI_API_KEY = cfg.get(["key", "openai_key"], "OPENAI_API_KEY")
 OPENAI_HEADERS = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "OpenAI-Beta": "realtime=v1"
+    "Authorization": f"Bearer {OPENAI_API_KEY}",
+    "OpenAI-Beta": "realtime=v1"
 }
 OPENAI_VOICE = cfg.get(["voice", "openai_voice"], "OPENAI_VOICE", "alloy")
 OPENAI_INSTR = cfg.get("instructions", "OPENAI_INSTRUCTIONS")
+OPENAI_INTRO = cfg.get("welcome_message", "OPENAI_WELCOME_MSG")
 
 
-class OpenAI(AIEngine):
+class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     """ Implements WS communication with OpenAI """
 
-    def __init__(self, key, sdp, queue):
-        self.queue = queue
+    def __init__(self, call):
+        self.codec = self.choose_codec(call.sdp)
+        self.queue = call.rtp
+        self.call = call
         self.ws = None
         self.session = None
-
-        self.codec = get_match_codec(sdp, ["pcmu", "pcma"])
+        self.intro = None
 
         # normalize codec
         if self.codec.name == "mulaw":
@@ -63,35 +67,94 @@ class OpenAI(AIEngine):
         elif self.codec.name == "alaw":
             self.codec_name = "g711_alaw"
 
+    def choose_codec(self, sdp):
+        """ Returns the preferred codec from a list """
+        codecs = get_codecs(sdp)
+        priority = ["pcma", "pcmu"]
+        cmap = {c.name.lower(): c for c in codecs}
+        for codec in priority:
+            if codec in cmap:
+                return CODECS[codec](cmap[codec])
+
+        raise UnsupportedCodec("No supported codec found")
+
+    def get_audio_format(self):
+        """ Returns the corresponding audio format """
+        return self.codec_name
+
     async def start(self):
         """ Starts OpenAI connection and logs messages """
         self.ws = await connect(URL, additional_headers=OPENAI_HEADERS)
-        msg = json.loads(await self.ws.recv())
+        try:
+            json.loads(await self.ws.recv())
+        except ConnectionClosedOK:
+            logging.info("WS Connection with OpenAI is closed")
+            return
+        except ConnectionClosedError as e:
+            logging.error(e)
+            return
+
         self.session = {
-                "turn_detection": {
-                    "type": "server_vad",
-                    "silence_duration_ms": 200,
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
+            "turn_detection": {
+                "type": "server_vad",
+                "silence_duration_ms": 200,
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+            },
+            "input_audio_format": self.get_audio_format(),
+            "output_audio_format": self.get_audio_format(),
+            "input_audio_transcription": {
+                "model": "whisper-1",
+            },
+            "voice": OPENAI_VOICE,
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "terminate_call",
+                    "description":
+                        "Call me when any of the session's parties want to terminate the call."
+                        "Always say goodbye before hanging up."
+                        "Send the audio first, then call this function.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    },
                 },
-                "input_audio_format": self.codec_name,
-                "output_audio_format": self.codec_name,
-                "input_audio_transcription": {
-                    "model": "whisper-1",
-                },
-                "voice": OPENAI_VOICE,
+            ],
+            "tool_choice": "auto",
         }
         if OPENAI_INSTR:
             self.session["instructions"] = OPENAI_INSTR
         await self.ws.send(json.dumps({"type": "session.update",
                                       "session": self.session}))
+
+        if OPENAI_INTRO:
+            self.intro = {
+                "instructions": "Please greet the user with the following: " + OPENAI_INTRO}
+            await self.ws.send(json.dumps({"type": "response.create",
+                                           "response": self.intro}))
+        await self.handle_command()
+
+    async def handle_command(self):  # pylint: disable=too-many-branches
+        """ Handles a command from the server """
+        leftovers = b''
         async for smsg in self.ws:
             msg = json.loads(smsg)
             t = msg["type"]
             if t == "response.audio.delta":
                 media = base64.b64decode(msg["delta"])
-                for packet in self.codec.parse(media):
+                packets, leftovers = await self.run_in_thread(
+                    self.codec.parse, media, leftovers)
+                for packet in packets:
                     self.queue.put_nowait(packet)
+            elif t == "response.audio.done":
+                logging.info(t)
+                if len(leftovers) > 0:
+                    packet = await self.run_in_thread(self.codec.parse, None, leftovers)
+                    self.queue.put_nowait(packet)
+                    leftovers = b''
+
             elif t == "conversation.item.created":
                 if msg["item"]["status"] == "completed":
                     self.drain_queue()
@@ -99,10 +162,22 @@ class OpenAI(AIEngine):
                 logging.info("Speaker: %s", msg["transcript"].rstrip())
             elif t == "response.audio_transcript.done":
                 logging.info("Engine: %s", msg["transcript"])
+            elif t == "response.function_call_arguments.done":
+                if msg["name"] == "terminate_call":
+                    logging.info(t)
+                    self.terminate_call()
             elif t == "error":
                 logging.info(msg)
             else:
                 logging.info(t)
+
+    def terminate_call(self):
+        """ Terminates the call """
+        self.call.terminated = True
+
+    async def run_in_thread(self, func, *args):
+        """ Runs a function in a thread """
+        return await asyncio.to_thread(func, *args)
 
     def drain_queue(self):
         """ Drains the playback queue """
@@ -116,12 +191,13 @@ class OpenAI(AIEngine):
 
     async def send(self, audio):
         """ Sends audio to OpenAI """
-        if not self.ws:
+        if not self.ws or self.call.terminated:
             return
+
         audio_data = base64.b64encode(audio)
         event = {
-                "type": "input_audio_buffer.append",
-                "audio": audio_data.decode("utf-8")
+            "type": "input_audio_buffer.append",
+            "audio": audio_data.decode("utf-8")
         }
         await self.ws.send(json.dumps(event))
 

@@ -43,7 +43,6 @@ parser.add_argument('-c', '--config',
                     default=None,
                     help='specify a configuration file')
 
-
 parsed_args = parser.parse_args()
 Config.init(parsed_args.config)
 

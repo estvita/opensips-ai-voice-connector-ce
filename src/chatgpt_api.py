@@ -27,6 +27,7 @@ from openai import AsyncOpenAI  # pylint: disable=import-error
 
 class ChatGPT:
     """ Class that implements ChatGPT communication """
+
     def __init__(self, api_key, model):
         self.api_key = api_key
         self.model = model

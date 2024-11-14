@@ -121,8 +121,8 @@ def get_ai_flavor(params):
     return get_ai_flavor_default(user)
 
 
-def get_ai(flavor, key, codec, queue):
+def get_ai(flavor, call):
     """ Returns an AI object """
-    return FLAVORS[flavor](key, codec, queue)
+    return FLAVORS[flavor](call)
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

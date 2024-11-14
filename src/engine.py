@@ -83,7 +83,7 @@ def handle_call(call, key, method, params):
             return
 
         try:
-            new_call = Call(key, sdp, get_ai_flavor(params))
+            new_call = Call(key, mi_conn, sdp, get_ai_flavor(params))
             calls[key] = new_call
             mi_reply(key, method, 200, 'OK', new_call.get_body())
         except UnsupportedCodec:
@@ -141,6 +141,8 @@ async def shutdown(s, loop, event):
         task.cancel()
     logging.info("Cancelling %d outstanding tasks", len(tasks))
     for call in calls.values():
+        if call.terminated:
+            continue
         await call.close()
     try:
         event.unsubscribe()

@@ -33,10 +33,9 @@ _Config = configparser.ConfigParser()
 class ConfigSection(dict):
     """ class that handles a config section """
 
-    def __init__(self, section, init=None):
-        super().__init__()
-        self.update(init)
-        self.update(section)
+    def __init__(self, section, custom=None):
+        super().__init__(section)
+        self.update(custom)
 
     def getenv(self, env, fallback=None):
         """ returns the configuration from environment """

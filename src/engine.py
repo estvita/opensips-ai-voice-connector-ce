@@ -25,6 +25,7 @@ import json
 import signal
 import asyncio
 import logging
+import requests
 
 from opensips.mi import OpenSIPSMI, OpenSIPSMIException
 from opensips.event import OpenSIPSEventHandler, OpenSIPSEventException
@@ -33,7 +34,7 @@ from aiortc.sdp import SessionDescription
 from call import Call
 from config import Config
 from codec import UnsupportedCodec
-from utils import get_ai_flavor, indialog, UnknownSIPUser
+from utils import get_ai_flavor, get_user, indialog, UnknownSIPUser
 
 
 mi_cfg = Config.get("opensips")
@@ -56,20 +57,48 @@ def mi_reply(key, method, code, reason, body=None):
     mi_conn.execute('ua_session_reply', params)
 
 
+def fetch_bot_config(api_url, bot):
+    """
+    Sends a POST request to the API to fetch the bot configuration.
+
+    :param api_url: URL of the API endpoint.
+    :param bot: Name of the bot to fetch configuration for.
+    :return: The configuration dictionary if successful, otherwise None.
+    """
+    try:
+        response = requests.post(api_url, json={"bot": bot})
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logging.exception(f"Failed to fetch data from API. Status: {response.status_code}, Message: {response.text}")
+    except requests.RequestException as e:
+        logging.exception(f"Error during API call: {e}")
+    return None
+
+
 def parse_params(params):
     """ Parses paraameters received in a call """
     flavor = None
     extra_params = None
+    api_url = Config.engine("api_url", "API_URL")
+    cfg = None
+    if api_url:
+        bot = get_user(params)
+        if bot:
+            cfg = fetch_bot_config(api_url, bot)
+
     if "extra_params" in params and params["extra_params"]:
         extra_params = json.loads(params["extra_params"])
-        if extra_params and "flavor" in extra_params:
+        if "flavor" in extra_params:
             flavor = extra_params["flavor"]
     if not flavor:
         flavor = get_ai_flavor(params)
     if extra_params and flavor in extra_params:
-        cfg = extra_params[flavor]
-    else:
-        cfg = None
+        if cfg is None:
+            cfg = extra_params[flavor]
+        else:
+            cfg.update(extra_params[flavor])
+
     return flavor, cfg
 
 

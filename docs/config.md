@@ -63,6 +63,7 @@ Parameters used to tune global behavior of the engine are:
 | - | - | `CONFIG_FILE` | no | Configuration file used | not used |
 | `engine` | `event_ip`   | `EVENT_IP`  | no | The IP used to listen for events from OpenSIPS | `127.0.0.1` |
 | `engine` | `event_port` | `EVENT_PORT`| no | The port used to listen for events from OpenSIPS | random |
+| `engine` | `api_url`    | `API_URL`   | no | The URL of the API to fetch bot configuration  | not set |
 | `opensips` | `ip`   | `MI_IP`  | no | OpenSIPS MI Datagram IP   | `127.0.0.1` |
 | `opensips` | `port` | `MI_PORT`| no | OpenSIPS MI Datagram Port | `8080` |
 | `rtp` | `min_port` | `RTP_MIN_PORT` | no | Lower limit of RTP ports range | `35000` |

@@ -178,7 +178,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                     leftovers = b''
 
             elif t == "conversation.item.created":
-                if msg["item"]["status"] == "completed":
+                if msg["item"].get('status') == "completed":
                     self.drain_queue()
             elif t == "conversation.item.input_audio_transcription.completed":
                 logging.info("Speaker: %s", msg["transcript"].rstrip())

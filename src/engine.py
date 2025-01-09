@@ -85,7 +85,10 @@ def parse_params(params):
     if api_url:
         bot = get_user(params)
         if bot:
-            cfg = fetch_bot_config(api_url, bot)
+            bot_data = fetch_bot_config(api_url, bot)
+            if bot_data:
+                flavor = bot_data.get('flavor')
+                cfg = bot_data[flavor]
 
     if "extra_params" in params and params["extra_params"]:
         extra_params = json.loads(params["extra_params"])

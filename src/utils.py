@@ -61,6 +61,8 @@ def indialog(params):
     if 'headers' not in params:
         return False
     to = get_to(params)
+    if not to:
+        return False
     params = to.parameters
     if "tag" in params and len(params["tag"]) > 0:
         return True

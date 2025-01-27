@@ -49,6 +49,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.ws = None
         self.session = None
         self.intro = None
+        self.transfer = None
         self.cfg = Config.get("openai", cfg)
         self.model = self.cfg.get("model", "OPENAI_API_MODEL",
                                   OPENAI_API_MODEL)
@@ -59,6 +60,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                                   "OPENAI_VOICE", "alloy")
         self.instructions = self.cfg.get("instructions", "OPENAI_INSTRUCTIONS")
         self.intro = self.cfg.get("welcome_message", "OPENAI_WELCOME_MSG")
+        self.transfer = self.cfg.get("transfer_uri", "OPENAI_TRANSFER_URI")
 
         # normalize codec
         if self.codec.name == "mulaw":
@@ -141,28 +143,31 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                         "required": []
                     },
                 },
+                {
+                    "type": "function",
+                    "name": "transfer_call",
+                    "description": "call the function if a request was received to transfer a call with an operator, a person",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                },
             ],
             "tool_choice": "auto",
         }
         if self.instructions:
             self.session["instructions"] = self.instructions
+        await self.ws.send(json.dumps({"type": "session.update",
+                                      "session": self.session}))
 
-        try:
-            await self.ws.send(json.dumps({"type": "session.update", "session": self.session}))
-            if self.intro:
-                self.intro = {
-                    "instructions": "Please greet the user with the following: " +
-                    self.intro
-                }
-                await self.ws.send(json.dumps({"type": "response.create", "response": self.intro}))
-            await self.handle_command()
-        except ConnectionClosedError as e:
-            logging.error(f"Error while communicating with OpenAI: {e}. Terminating call.")
-            self.terminate_call()
-        except Exception as e:
-            logging.error(f"Unexpected error during session: {e}. Terminating call.")
-            self.terminate_call()
-
+        if self.intro:
+            self.intro = {
+                "instructions": "Please greet the user with the following: " +
+                self.intro}
+            await self.ws.send(json.dumps({"type": "response.create",
+                                           "response": self.intro}))
+        await self.handle_command()
 
     async def handle_command(self):  # pylint: disable=too-many-branches
         """ Handles a command from the server """
@@ -195,6 +200,18 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 if msg["name"] == "terminate_call":
                     logging.info(t)
                     self.terminate_call()
+                elif msg["name"] == "transfer_call":
+                    params = {
+                        'key': self.call.b2b_key,
+                        'method': "REFER",
+                        'body': "",
+                        'extra_headers': (
+                            f"Refer-To: <{self.transfer}>\r\n"
+                            f"Referred-By: {self.call.to}\r\n"
+                        )
+                    }
+                    self.call.mi_conn.execute('ua_session_update', params)
+
             elif t == "error":
                 logging.info(msg)
             else:
@@ -232,7 +249,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         try:
             await self.ws.send(json.dumps(event))
         except ConnectionClosedError as e:
-            logging.error(f"WebSocket connection closed: {e}. Audio data could not be sent.")
+            logging.error(f"WebSocket connection closed: {e.code}, {e.reason}")
             self.terminate_call()
         except Exception as e:
             logging.error(f"Unexpected error while sending audio: {e}")

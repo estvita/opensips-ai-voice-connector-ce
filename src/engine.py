@@ -34,7 +34,8 @@ from aiortc.sdp import SessionDescription
 from call import Call
 from config import Config
 from codec import UnsupportedCodec
-from utils import get_ai_flavor, get_user, indialog, UnknownSIPUser
+from utils import UnknownSIPUser
+import utils as utils
 
 
 mi_cfg = Config.get("opensips")
@@ -82,27 +83,27 @@ def parse_params(params):
     extra_params = None
     api_url = Config.engine("api_url", "API_URL")
     cfg = None
-    if api_url:
-        bot = get_user(params)
-        if bot:
-            bot_data = fetch_bot_config(api_url, bot)
-            if bot_data:
-                flavor = bot_data.get('flavor')
-                cfg = bot_data[flavor]
+    bot = utils.get_user(params)
+    to = utils.get_to(params)
+    if bot and api_url:
+        bot_data = fetch_bot_config(api_url, bot)
+        if bot_data:
+            flavor = bot_data.get('flavor')
+            cfg = bot_data[flavor]
 
     if "extra_params" in params and params["extra_params"]:
         extra_params = json.loads(params["extra_params"])
         if "flavor" in extra_params:
             flavor = extra_params["flavor"]
     if not flavor:
-        flavor = get_ai_flavor(params)
+        flavor = utils.get_ai_flavor(params)
     if extra_params and flavor in extra_params:
         if cfg is None:
             cfg = extra_params[flavor]
         else:
             cfg.update(extra_params[flavor])
 
-    return flavor, cfg
+    return flavor, to, cfg
 
 
 def handle_call(call, key, method, params):
@@ -133,8 +134,8 @@ def handle_call(call, key, method, params):
             return
 
         try:
-            flavor, cfg = parse_params(params)
-            new_call = Call(key, mi_conn, sdp, flavor, cfg)
+            flavor, to, cfg = parse_params(params)
+            new_call = Call(key, mi_conn, sdp, flavor, to, cfg)
             calls[key] = new_call
             mi_reply(key, method, 200, 'OK', new_call.get_body())
         except UnsupportedCodec:
@@ -148,14 +149,23 @@ def handle_call(call, key, method, params):
         except Exception as e:  # pylint: disable=broad-exception-caught
             logging.exception("Error creating call %s", e)
             mi_reply(key, method, 500, 'Server Internal Error')
-
-    elif not call:
-        mi_reply(key, method, 405, 'Method not supported')
-        return
-
-    if method == 'BYE':
+    
+    elif method == 'NOTIFY':
+        mi_reply(key, method, 200, 'OK')
+        sub_state = utils.get_header(params, "Subscription-State")
+        if "terminated" in sub_state:
+            call.terminated = True
+    
+    elif method == 'BYE':
         asyncio.create_task(call.close())
         calls.pop(key, None)
+    
+    if not call:
+        try:
+            mi_reply(key, method, 405, 'Method not supported')
+        except OpenSIPSMIException as e:
+            logging.error(f"Failed to send reply {key}, {method}: {e}")
+        return
 
 
 def udp_handler(data):
@@ -172,7 +182,7 @@ def udp_handler(data):
     if 'method' not in params:
         return
     method = params['method']
-    if indialog(params):
+    if utils.indialog(params):
         # search for the call
         if key not in calls:
             mi_reply(key, method, 481, 'Call/Transaction Does Not Exist')

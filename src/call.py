@@ -51,7 +51,9 @@ class Call():  # pylint: disable=too-many-instance-attributes
                  b2b_key,
                  mi_conn,
                  sdp: SessionDescription,
-                 flavor: str, cfg):
+                 flavor: str,
+                 to: str,
+                 cfg):
         host_ip = rtp_cfg.get('bind_ip', 'RTP_BIND_IP', '0.0.0.0')
         try:
             hostname = socket.gethostbyname(socket.gethostname())
@@ -78,6 +80,8 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.ai = get_ai(flavor, self, cfg)
 
         self.codec = self.ai.get_codec()
+
+        self.to = to
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.bind(host_ip)

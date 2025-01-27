@@ -152,8 +152,7 @@ def handle_call(call, key, method, params):
     
     elif method == 'NOTIFY':
         mi_reply(key, method, 200, 'OK')
-        sub_state = utils.get_header(params, "Subscription-State")
-        if "terminated" in sub_state:
+        if "terminated" in utils.get_header(params, "Subscription-State"):
             call.terminated = True
     
     elif method == 'BYE':

@@ -158,16 +158,23 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         }
         if self.instructions:
             self.session["instructions"] = self.instructions
-        await self.ws.send(json.dumps({"type": "session.update",
-                                      "session": self.session}))
 
-        if self.intro:
-            self.intro = {
-                "instructions": "Please greet the user with the following: " +
-                self.intro}
-            await self.ws.send(json.dumps({"type": "response.create",
-                                           "response": self.intro}))
-        await self.handle_command()
+        try:
+            await self.ws.send(json.dumps({"type": "session.update", "session": self.session}))
+            if self.intro:
+                self.intro = {
+                    "instructions": "Please greet the user with the following: " +
+                    self.intro
+                }
+                await self.ws.send(json.dumps({"type": "response.create", "response": self.intro}))
+            await self.handle_command()
+        except ConnectionClosedError as e:
+            logging.error(f"Error while communicating with OpenAI: {e}. Terminating call.")
+            self.terminate_call()
+        except Exception as e:
+            logging.error(f"Unexpected error during session: {e}. Terminating call.")
+            self.terminate_call()
+
 
     async def handle_command(self):  # pylint: disable=too-many-branches
         """ Handles a command from the server """

@@ -131,20 +131,6 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             "tools": [
                 {
                     "type": "function",
-                    "name": "terminate_call",
-                    "description":
-                        "Call me when any of the session's parties want "
-                        "to terminate the call."
-                        "Always say goodbye before hanging up."
-                        "Send the audio first, then call this function.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    },
-                },
-                {
-                    "type": "function",
                     "name": "transfer_call",
                     "description": "call the function if a request was received to transfer a call with an operator, a person",
                     "parameters": {

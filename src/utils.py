@@ -48,19 +48,21 @@ def get_header(params, header):
     return hdr_lines[0].split(":", 1)[1].strip()
 
 
-def get_to(params):
-    """ Returns the To line parameters """
-    to_line = get_header(params, "To")
-    if not to_line:
+def get_address(params, ep):
+    """ Returns the To line parameters
+    ep (endpoint) - To or From
+    """
+    addr_line = get_header(params, ep)
+    if not addr_line:
         return None
-    return Address.parse(to_line)
+    return Address.parse(addr_line)
 
 
 def indialog(params):
     """ indicates whether the message is an in-dialog one """
     if 'headers' not in params:
         return False
-    to = get_to(params)
+    to = get_address(params, "To")
     if not to:
         return False
     params = to.parameters
@@ -69,11 +71,11 @@ def indialog(params):
     return False
 
 
-def get_user(params):
+def get_user(params, ep):
     """ Returns the User from the SIP headers """
 
-    to = get_to(params)
-    return to.uri.user.lower() if to.uri else None
+    adr = get_address(params, ep)
+    return adr.uri.user.lower() if adr.uri else None
 
 
 def _dialplan_match(regex, string):
@@ -98,7 +100,7 @@ def get_ai_flavor_default(user):
 def get_ai_flavor(params):
     """ Returns the AI flavor to be used """
 
-    user = get_user(params)
+    user = get_user(params, "To")
     if not user:
         raise UnknownSIPUser("cannot parse username")
 

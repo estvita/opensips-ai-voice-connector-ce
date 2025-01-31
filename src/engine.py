@@ -77,6 +77,10 @@ def fetch_bot_config(api_url, bot):
         logging.exception(f"Error during API call: {e}")
     return None
 
+headers_to_check = {
+    "welcome_message": "X-Welcome-Message",
+    "transfer_uri": "X-Transfer-Uri"
+}
 
 def parse_params(params):
     """ Parses paraameters received in a call """
@@ -86,15 +90,16 @@ def parse_params(params):
     cfg = None
     bot = utils.get_user(params, "From")
     to = utils.get_address(params, "To")
-    welcome_msg = utils.get_header(params, "X-Welcome-Message")
     if bot and api_url:
         bot_data = fetch_bot_config(api_url, bot)
         if bot_data:
             flavor = bot_data.get('flavor')
             cfg = bot_data[flavor]
 
-            if welcome_msg:
-                cfg["welcome_message"] = welcome_msg
+            for key, header in headers_to_check.items():
+                value = utils.get_header(params, header)
+                if value:
+                    cfg[key] = value
 
     if "extra_params" in params and params["extra_params"]:
         extra_params = json.loads(params["extra_params"])

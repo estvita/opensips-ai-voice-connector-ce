@@ -27,6 +27,7 @@ import asyncio
 import logging
 import requests
 
+
 from opensips.mi import OpenSIPSMI, OpenSIPSMIException
 from opensips.event import OpenSIPSEventHandler, OpenSIPSEventException
 from aiortc.sdp import SessionDescription
@@ -85,11 +86,15 @@ def parse_params(params):
     cfg = None
     bot = utils.get_user(params, "From")
     to = utils.get_address(params, "To")
+    welcome_msg = utils.get_header(params, "X-Welcome-Message")
     if bot and api_url:
         bot_data = fetch_bot_config(api_url, bot)
         if bot_data:
             flavor = bot_data.get('flavor')
             cfg = bot_data[flavor]
+
+            if welcome_msg:
+                cfg["welcome_message"] = welcome_msg
 
     if "extra_params" in params and params["extra_params"]:
         extra_params = json.loads(params["extra_params"])

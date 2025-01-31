@@ -79,6 +79,7 @@ def fetch_bot_config(api_url, bot):
 
 headers_to_check = {
     "welcome_message": "X-Welcome-Message",
+    "instructions": "X-Instructions",
     "transfer_uri": "X-Transfer-Uri"
 }
 

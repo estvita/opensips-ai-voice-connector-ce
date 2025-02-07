@@ -76,12 +76,11 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.stop_event = asyncio.Event()
         self.stop_event.clear()
 
+        self.to = to
         self.sdp = sdp
         self.ai = get_ai(flavor, self, cfg)
 
         self.codec = self.ai.get_codec()
-
-        self.to = to
 
         self.serversock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.bind(host_ip)

@@ -49,7 +49,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.ws = None
         self.session = None
         self.intro = None
-        self.transfer = None
+        self.transfer_to = None
+        self.transfer_by = None
         self.cfg = Config.get("openai", cfg)
         self.model = self.cfg.get("model", "OPENAI_API_MODEL",
                                   OPENAI_API_MODEL)
@@ -60,7 +61,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                                   "OPENAI_VOICE", "alloy")
         self.instructions = self.cfg.get("instructions", "OPENAI_INSTRUCTIONS")
         self.intro = self.cfg.get("welcome_message", "OPENAI_WELCOME_MSG")
-        self.transfer = self.cfg.get("transfer_uri", "OPENAI_TRANSFER_URI")
+        self.transfer_to = self.cfg.get("transfer_to", "OPENAI_TRANSFER_TO")
+        self.transfer_by = self.cfg.get("transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
 
         # normalize codec
         if self.codec.name == "mulaw":
@@ -213,8 +215,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                         'method': "REFER",
                         'body': "",
                         'extra_headers': (
-                            f"Refer-To: <{self.transfer}>\r\n"
-                            f"Referred-By: {self.call.to}\r\n"
+                            f"Refer-To: <{self.transfer_to}>\r\n"
+                            f"Referred-By: {self.transfer_by}\r\n"
                         )
                     }
                     self.call.mi_conn.execute('ua_session_update', params)

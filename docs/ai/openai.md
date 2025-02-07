@@ -37,3 +37,5 @@ The following parameters can be tuned for this engine:
 | `openai` | `turn_detection_silence_ms`| `OPENAI_TURN_DETECT_SILENCE_MS`| no | Configures [OpenAI Turn Detection](https://platform.openai.com/docs/api-reference/realtime-client-events/session/update) `silence duration ms` | `200` |
 | `openai` | `turn_detection_threshold` | `OPENAI_TURN_DETECT_THRESHOLD` | no | Configures [OpenAI Turn Detection](https://platform.openai.com/docs/api-reference/realtime-client-events/session/update) `threshold` | `0.5` |
 | `openai` | `turn_detection_prefix_ms` | `OPENAI_TURN_DETECT_PREFIX_MS` | no | Configures [OpenAI Turn Detection](https://platform.openai.com/docs/api-reference/realtime-client-events/session/update) `prefix_padding_ms` | `300` |
+| `openai`  |  `transfer_to`  | `OPENAI_TRANSFER_TO` | no | [SIP uri](https://en.wikipedia.org/wiki/SIP_URI_scheme) for call transfer function | not set |
+| `openai`  |  `transfer_by`  | `OPENAI_TRANSFER_BY` | no | [SIP uri](https://en.wikipedia.org/wiki/SIP_URI_scheme) for call transfer function | not set |

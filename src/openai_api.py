@@ -49,6 +49,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.ws = None
         self.session = None
         self.intro = None
+        self.transfer_to = None
+        self.transfer_by = None
         self.cfg = Config.get("openai", cfg)
         self.model = self.cfg.get("model", "OPENAI_API_MODEL",
                                   OPENAI_API_MODEL)
@@ -59,6 +61,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                                   "OPENAI_VOICE", "alloy")
         self.instructions = self.cfg.get("instructions", "OPENAI_INSTRUCTIONS")
         self.intro = self.cfg.get("welcome_message", "OPENAI_WELCOME_MSG")
+        self.transfer_to = self.cfg.get("transfer_to", "OPENAI_TRANSFER_TO")
+        self.transfer_by = self.cfg.get("transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
 
         # normalize codec
         if self.codec.name == "mulaw":
@@ -141,6 +145,16 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                         "required": []
                     },
                 },
+                {
+                    "type": "function",
+                    "name": "transfer_call",
+                    "description": "call the function if a request was received to transfer a call with an operator, a person",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                },
             ],
             "tool_choice": "auto",
         }
@@ -195,6 +209,18 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 if msg["name"] == "terminate_call":
                     logging.info(t)
                     self.terminate_call()
+                elif msg["name"] == "transfer_call":
+                    params = {
+                        'key': self.call.b2b_key,
+                        'method': "REFER",
+                        'body': "",
+                        'extra_headers': (
+                            f"Refer-To: <{self.transfer_to}>\r\n"
+                            f"Referred-By: {self.transfer_by}\r\n"
+                        )
+                    }
+                    self.call.mi_conn.execute('ua_session_update', params)
+
             elif t == "error":
                 logging.info(msg)
             else:
@@ -232,7 +258,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         try:
             await self.ws.send(json.dumps(event))
         except ConnectionClosedError as e:
-            logging.error(f"WebSocket connection closed: {e}. Audio data could not be sent.")
+            logging.error(f"WebSocket connection closed: {e.code}, {e.reason}")
             self.terminate_call()
         except Exception as e:
             logging.error(f"Unexpected error while sending audio: {e}")

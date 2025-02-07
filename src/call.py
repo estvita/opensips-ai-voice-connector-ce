@@ -51,7 +51,9 @@ class Call():  # pylint: disable=too-many-instance-attributes
                  b2b_key,
                  mi_conn,
                  sdp: SessionDescription,
-                 flavor: str, cfg):
+                 flavor: str,
+                 to: str,
+                 cfg):
         host_ip = rtp_cfg.get('bind_ip', 'RTP_BIND_IP', '0.0.0.0')
         try:
             hostname = socket.gethostbyname(socket.gethostname())
@@ -74,6 +76,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.stop_event = asyncio.Event()
         self.stop_event.clear()
 
+        self.to = to
         self.sdp = sdp
         self.ai = get_ai(flavor, self, cfg)
 

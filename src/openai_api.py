@@ -119,9 +119,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             },
             "input_audio_format": self.get_audio_format(),
             "output_audio_format": self.get_audio_format(),
-            "input_audio_transcription": {
-                "model": "whisper-1",
-            },
+            "input_audio_transcription": None,
             "voice": self.voice,
             "temperature": float(self.cfg.get("temperature",
                                               "OPENAI_TEMPERATURE", 0.8)),

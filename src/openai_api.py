@@ -126,20 +126,10 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             "max_response_output_tokens": self.cfg.get("max_tokens",
                                                        "OPENAI_MAX_TOKENS",
                                                        "inf"),
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "transfer_call",
-                    "description": "call the function if a request was received to transfer a call with an operator, a person",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                },
-            ],
+            "tools": self.cfg.get("tools", []),
             "tool_choice": "auto",
         }
+        
         if self.instructions:
             self.session["instructions"] = self.instructions
 

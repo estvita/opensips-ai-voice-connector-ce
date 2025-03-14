@@ -42,7 +42,7 @@ class GenericCodec(ABC):
 
     @abstractmethod
     async def process_response(self, response, queue):
-        """ Processes the response from speach engine """
+        """ Processes the response from speech engine """
 
     @abstractmethod
     def get_silence(self):

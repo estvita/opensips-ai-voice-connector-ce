@@ -27,10 +27,12 @@ import re
 from sipmessage import Address
 from deepgram_api import Deepgram
 from openai_api import OpenAI
+from azure_api import AzureAI
 from config import Config
 
 FLAVORS = {"deepgram": Deepgram,
-           "openai": OpenAI}
+           "openai": OpenAI,
+           "azure": AzureAI}
 
 
 class UnknownSIPUser(Exception):

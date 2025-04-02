@@ -138,8 +138,15 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
         """ Processes the speech received """
         response = await self.tts.stream_raw({"text": phrase},
                                              self.speak_options)
+        self.drain_queue()
         async with self.speech_lock:
             await self.codec.process_response(response, self.queue)
+
+    def drain_queue(self):
+        """ Drains the playback queue """
+        logging.info("Dropping %d packets", self.queue.qsize())
+        with self.queue.mutex:
+            self.queue.queue.clear()
 
     async def start(self):
         """ Starts a Depgram connection """

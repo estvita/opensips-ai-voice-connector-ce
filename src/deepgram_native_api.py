@@ -79,8 +79,8 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
         return self.codec_name
 
     async def start(self):
-        """ Starts OpenAI connection and logs messages """
-        logging.info("Starting Deepgram Agent")
+        """ Starts Deepgram Voice Agent connection and logs messages """
+        logging.info("Starting Deepgram Native")
         deepgram_headers = {
                 "Authorization": f"Token {self.key}"
         }

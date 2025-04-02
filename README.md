@@ -46,6 +46,9 @@ supported flavors are:
                                    and then push the response back to Deepgram
                                    Text-to-Speech engine
 * [OpenAI](docs/ai/openai.md): use OpenAI Real-Time Speech-to-Speech engine
+* [Deepgram Native](docs/ai/deepgram-native.md): use Deepgram Voice Agent - their
+                                                 new Voice-to-Voice engine
+* [Azure](docs/ai/azure.md): use Azure Speech-to-Text and Text-to-Speech
 
 Check out the [AI Flavors](docs/ai-flavors.md) page for more information.
 

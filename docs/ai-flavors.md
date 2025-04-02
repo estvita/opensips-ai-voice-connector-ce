@@ -25,9 +25,9 @@ API](https://openai.com/index/introducing-the-realtime-api/) that provides
 direct Speech-to-Speech interpretation of the user's conversation.
 Find out more information about OpenAI flavor [here](ai/openai.md).
 
-### Deepgram's Voice Agent
+### Deepgram Native
 
-The Deepgram's Voice Agent flavor uses the [Deepgram's](https://deepgram.com/) new Voice Agent API that provides direct Speech-to-Speech interpretation of the user's conversation. Find out more information about Deepgram's Voice Agent flavor [here](ai/deepgram-voice-agent.md).
+The Deepgram Native flavor uses the [Deepgram's](https://deepgram.com/) new Voice Agent API that provides direct Speech-to-Speech interpretation of the user's conversation. Find out more information about Deepgram Native flavor [here](ai/deepgram-native.md).
 
 ## Flavor Selection
 

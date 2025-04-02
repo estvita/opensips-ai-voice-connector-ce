@@ -33,10 +33,10 @@ from ai import AIEngine
 from codec import get_codecs, CODECS, UnsupportedCodec
 from config import Config
 
-DEEPGRAM_AGENT_URL = "wss://agent.deepgram.com/agent"
+DEEPGRAM_VOICE_AGENT_URL = "wss://agent.deepgram.com/agent"
 
 
-class DeepgramAgent(AIEngine):  # pylint: disable=too-many-instance-attributes
+class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     """ Implements WS communication with Deepgram """
 
@@ -47,12 +47,12 @@ class DeepgramAgent(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.ws = None
         self.session = None
         self.intro = None
-        self.cfg = Config.get("deepgram_agent", cfg)
+        self.cfg = Config.get("deepgram_native", cfg)
         self.key = self.cfg.get("key", "DEEPGRAM_API_KEY")
-        self.stt_model = self.cfg.get("speech_model", "DEEPGRAM_AGENT_SPEECH_MODEL", "nova-3")
-        self.tts_model = self.cfg.get("voice", "DEEPGRAM_AGENT_VOICE", "aura-asteria-en")
+        self.stt_model = self.cfg.get("speech_model", "DEEPGRAM_NATIVE_SPEECH_MODEL", "nova-3")
+        self.tts_model = self.cfg.get("voice", "DEEPGRAM_NATIVE_VOICE", "aura-asteria-en")
         self.instructions = self.cfg.get("instructions", "DEEPGRAM_INSTRUCTIONS")
-        self.intro = self.cfg.get("welcome_message", "DEEPGRAM_AGENT_WELCOME_MSG")
+        self.intro = self.cfg.get("welcome_message", "DEEPGRAM_NATIVE_WELCOME_MSG")
         self.llm_url = self.cfg.get("llm_url", "DEEPGRAM_LLM_URL")
         self.llm_key = self.cfg.get("llm_key", "DEEPGRAM_LLM_KEY")
         self.llm_model = self.cfg.get("llm_model", "DEEPGRAM_LLM_MODEL")
@@ -84,7 +84,7 @@ class DeepgramAgent(AIEngine):  # pylint: disable=too-many-instance-attributes
         deepgram_headers = {
                 "Authorization": f"Token {self.key}"
         }
-        self.ws = await connect(DEEPGRAM_AGENT_URL, additional_headers=deepgram_headers)
+        self.ws = await connect(DEEPGRAM_VOICE_AGENT_URL, additional_headers=deepgram_headers)
         try:
             resp = json.loads(await self.ws.recv())
             logging.info(f"Connected to Deepgram: {resp}")

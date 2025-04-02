@@ -29,6 +29,10 @@ Find out more information about OpenAI flavor [here](ai/openai.md).
 
 The Deepgram Native flavor uses the [Deepgram's](https://deepgram.com/) new Voice Agent API that provides direct Speech-to-Speech interpretation of the user's conversation. Find out more information about Deepgram Native flavor [here](ai/deepgram-native.md).
 
+### Azure
+
+The Azure flavor uses the [Azure's AI Speech](https://azure.microsoft.com/en-us/products/ai-services/ai-speech/) STT and TTS in combination with ChatGPT API to provide a seamless voice interaction, like the Deepgram flavor. You can read more about this flavor [here](ai/azure.md).
+
 ## Flavor Selection
 
 For every new call, the engine needs to select an AI flavor to use. For this,

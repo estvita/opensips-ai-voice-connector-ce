@@ -26,7 +26,7 @@ Module that implements Deepgram communcation
 import logging
 import asyncio
 
-from deepgram import (  # pylint: disable=import-error
+from deepgram import (  # pylint: disable=import-error, import-self
     LiveOptions,
     SpeakOptions,
     DeepgramClient,
@@ -36,7 +36,7 @@ from deepgram import (  # pylint: disable=import-error
 from ai import AIEngine
 from chatgpt_api import ChatGPT
 from config import Config
-from codec import get_codecs, CODECS, UnsupportedCodec
+from codec import get_codecs, CODECS
 
 
 class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
@@ -117,18 +117,15 @@ class Deepgram(AIEngine):  # pylint: disable=too-many-instance-attributes
     def choose_codec(self, sdp):
         """ Returns the preferred codec from a list """
         codecs = get_codecs(sdp)
-        # try with Opus first
         cmap = {c.name.lower(): c for c in codecs}
+
+        # try with Opus first
         if "opus" in cmap:
             codec = CODECS["opus"](cmap["opus"])
             if codec.sample_rate == 48000:
                 return codec
 
-        for codec in ["pcma", "pcmu"]:
-            if codec in cmap:
-                return CODECS[codec](cmap[codec])
-
-        raise UnsupportedCodec("No supported codec found")
+        return super().choose_codec(sdp)
 
     async def send(self, audio):
         """ Sends audio to Deepgram """

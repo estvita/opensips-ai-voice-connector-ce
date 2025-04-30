@@ -30,9 +30,8 @@ import asyncio
 from queue import Empty
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
-from ai import AIEngine
-from codec import get_codecs, CODECS, UnsupportedCodec
-from config import Config
+from ai import AIEngine  # pylint: disable=import-error
+from config import Config  # pylint: disable=import-error
 
 OPENAI_API_MODEL = "gpt-4o-realtime-preview-2024-10-01"
 OPENAI_URL_FORMAT = "wss://api.openai.com/v1/realtime?model={}"
@@ -62,24 +61,14 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.instructions = self.cfg.get("instructions", "OPENAI_INSTRUCTIONS")
         self.intro = self.cfg.get("welcome_message", "OPENAI_WELCOME_MSG")
         self.transfer_to = self.cfg.get("transfer_to", "OPENAI_TRANSFER_TO")
-        self.transfer_by = self.cfg.get("transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
+        self.transfer_by = self.cfg.get(
+            "transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
 
         # normalize codec
         if self.codec.name == "mulaw":
             self.codec_name = "g711_ulaw"
         elif self.codec.name == "alaw":
             self.codec_name = "g711_alaw"
-
-    def choose_codec(self, sdp):
-        """ Returns the preferred codec from a list """
-        codecs = get_codecs(sdp)
-        priority = ["pcma", "pcmu"]
-        cmap = {c.name.lower(): c for c in codecs}
-        for codec in priority:
-            if codec in cmap:
-                return CODECS[codec](cmap[codec])
-
-        raise UnsupportedCodec("No supported codec found")
 
     def get_audio_format(self):
         """ Returns the corresponding audio format """
@@ -88,8 +77,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
     async def start(self):
         """ Starts OpenAI connection and logs messages """
         openai_headers = {
-                "Authorization": f"Bearer {self.key}",
-                "OpenAI-Beta": "realtime=v1"
+            "Authorization": f"Bearer {self.key}",
+            "OpenAI-Beta": "realtime=v1"
         }
         self.ws = await connect(self.url, additional_headers=openai_headers)
         try:
@@ -148,7 +137,9 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 {
                     "type": "function",
                     "name": "transfer_call",
-                    "description": "call the function if a request was received to transfer a call with an operator, a person",
+                    "description":
+                        "call the function if a request was received to"
+                        "transfer a call with an operator, a person",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -171,12 +162,15 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 await self.ws.send(json.dumps({"type": "response.create", "response": self.intro}))
             await self.handle_command()
         except ConnectionClosedError as e:
-            logging.error(f"Error while communicating with OpenAI: {e}. Terminating call.")
+            logging.error(
+                "Error while communicating with OpenAI: %s. Terminating call.", e
+            )
             self.terminate_call()
-        except Exception as e:
-            logging.error(f"Unexpected error during session: {e}. Terminating call.")
+        except Exception as e:  # pylint: disable=broad-except
+            logging.error(
+                "Unexpected error during session: %s. Terminating call.", e
+            )
             self.terminate_call()
-
 
     async def handle_command(self):  # pylint: disable=too-many-branches
         """ Handles a command from the server """
@@ -194,7 +188,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 logging.info(t)
                 if len(leftovers) > 0:
                     packet = await self.run_in_thread(
-                            self.codec.parse, None, leftovers)
+                        self.codec.parse, None, leftovers)
                     self.queue.put_nowait(packet)
                     leftovers = b''
 
@@ -258,10 +252,13 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         try:
             await self.ws.send(json.dumps(event))
         except ConnectionClosedError as e:
-            logging.error(f"WebSocket connection closed: {e.code}, {e.reason}")
+            logging.error(
+                "WebSocket connection closed: %s, %s",
+                e.code, e.reason
+            )
             self.terminate_call()
-        except Exception as e:
-            logging.error(f"Unexpected error while sending audio: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logging.error("Unexpected error while sending audio: %s", e)
             self.terminate_call()
 
     async def close(self):

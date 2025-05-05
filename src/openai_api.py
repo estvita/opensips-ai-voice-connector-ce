@@ -155,7 +155,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                         "required": []
                     }
                 },
-            ],
+            ] + self.cfg.get("tools", []),
             "tool_choice": "auto",
         }
         if self.instructions:

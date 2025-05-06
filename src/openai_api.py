@@ -71,11 +71,11 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.transfer_by = self.cfg.get("transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
         self.tools = self.cfg.get("tools", "OPENAI_TOOLS")
         self.dify_url = self.cfg.get("dify_url")
-        self.dify_key = self.cfg.get(["key", "dify_key"])
+        self.dify_key = self.cfg.get("dify_key")
         if not self.dify_url or not self.dify_key:
             self.dify_cfg = Config.get("dify")
             self.dify_url = self.dify_cfg.get("dify_url", "DIFY_API_URL", DIFY_API_URL)
-            self.dify_key = self.dify_cfg.get(["key", "dify_key"], "DIFY_API_KEY")
+            self.dify_key = self.dify_cfg.get("dify_key", "DIFY_API_KEY")
 
         # normalize codec
         if self.codec.name == "mulaw":

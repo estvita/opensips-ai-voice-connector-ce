@@ -82,9 +82,10 @@ def parse_params(params):
     flavor = None
     extra_params = None
     api_url = Config.engine("api_url", "API_URL")
+    bot_header = Config.engine("bot_header", "BOT_HEADER", "To")
     cfg = None
-    bot = utils.get_user(params)
-    to = utils.get_to(params)
+    bot = utils.get_user(params, bot_header)
+    to = utils.get_address(params, "To")
     if bot and api_url:
         bot_data = fetch_bot_config(api_url, bot)
         if bot_data:

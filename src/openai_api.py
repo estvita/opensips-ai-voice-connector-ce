@@ -222,6 +222,11 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 for item in response["output"]:
                     if item.get('type') == 'function_call':
                         function_name = item.get("name")
+                        arguments = item.get("arguments", "{}")
+                        try:
+                            params_dict = json.loads(arguments)
+                        except Exception:
+                            params_dict = {}
                         function_response = None
                         if function_name == "terminate_call":
                             logging.info(t)
@@ -242,7 +247,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                             # if dify.ai workflow is connected
                             if self.dify_url and self.dify_key:
                                 dify_client = dify.WorkflowClient(self.dify_key, self.dify_url)
-                                inputs = {"function_name": function_name}
+                                inputs = {"function_name": function_name, **params_dict}
                                 try:
                                     workflow_resp = dify_client.run(inputs, response_mode="blocking", user=response.get("conversation_id"))
                                     workflow_resp.raise_for_status()

@@ -42,14 +42,28 @@ class UnknownSIPUser(Exception):
 
 
 def get_header(params, header):
-    """ Returns a specific line from headers """
+    """Returns a specific line from headers, supporting both long and compact forms."""
     if 'headers' not in params:
         return None
-    hdr_lines = [line for line in params['headers'].splitlines()
-                 if re.match(f"{header}:", line, re.I)]
-    if len(hdr_lines) == 0:
+    compact_map = {
+        'From': 'f',
+        'To': 't',
+        'Call-ID': 'i',
+        'Contact': 'm',
+        'Via': 'v',
+        'CSeq': 'c',
+        'Content-Length': 'l',
+        'Supported': 'k'
+    }
+    header_list = [header]
+    if header in compact_map:
+        header_list.append(compact_map[header])
+    header_pat = re.compile(rf"^({'|'.join(re.escape(h) for h in header_list)}):", re.I)
+    hdr_lines = [line for line in params['headers'].splitlines() if header_pat.match(line)]
+    if not hdr_lines:
         return None
     return hdr_lines[0].split(":", 1)[1].strip()
+
 
 def get_address(params, header):
     """ 

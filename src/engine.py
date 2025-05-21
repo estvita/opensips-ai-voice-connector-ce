@@ -86,6 +86,7 @@ def parse_params(params):
     cfg = None
     bot = utils.get_user(params, bot_header)
     to = utils.get_address(params, "To")
+    user = utils.get_user(params, "From")
     if bot and api_url:
         bot_data = fetch_bot_config(api_url, bot)
         if bot_data:
@@ -104,7 +105,7 @@ def parse_params(params):
         else:
             cfg.update(extra_params[flavor])
 
-    return flavor, to, cfg
+    return flavor, to, user, cfg
 
 
 def handle_call(call, key, method, params):
@@ -135,8 +136,8 @@ def handle_call(call, key, method, params):
             return
 
         try:
-            flavor, to, cfg = parse_params(params)
-            new_call = Call(key, mi_conn, sdp, flavor, to, cfg)
+            flavor, to, user, cfg = parse_params(params)
+            new_call = Call(key, mi_conn, sdp, flavor, to, user, cfg)
             calls[key] = new_call
             mi_reply(key, method, 200, 'OK', new_call.get_body())
         except UnsupportedCodec:

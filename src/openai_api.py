@@ -247,7 +247,11 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                             # if dify.ai workflow is connected
                             if self.dify_url and self.dify_key:
                                 dify_client = dify.WorkflowClient(self.dify_key, self.dify_url)
-                                inputs = {"function_name": function_name, **params_dict}
+                                inputs = {
+                                    "client_phone": self.call.user,
+                                    "function_name": function_name, 
+                                    **params_dict
+                                    }
                                 try:
                                     workflow_resp = dify_client.run(inputs, response_mode="blocking", user=response.get("conversation_id"))
                                     workflow_resp.raise_for_status()

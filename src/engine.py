@@ -60,14 +60,14 @@ def mi_reply(key, method, code, reason, body=None):
 
 def fetch_bot_config(api_url, bot):
     """
-    Sends a POST request to the API to fetch the bot configuration.
+    Sends a GET request to the API to fetch the bot configuration.
 
     :param api_url: URL of the API endpoint.
     :param bot: Name of the bot to fetch configuration for.
     :return: The configuration dictionary if successful, otherwise None.
     """
     try:
-        response = requests.post(api_url, json={"bot": bot})
+        response = requests.get(api_url, params={"bot": bot})
         if response.status_code == 200:
             return response.json()
         else:

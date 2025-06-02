@@ -27,15 +27,38 @@ import json
 import base64
 import logging
 import asyncio
+import importlib.util
+import sys
 from queue import Empty
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
-from ai import AIEngine
-from codec import get_codecs, CODECS, UnsupportedCodec
-from config import Config
+from ai import AIEngine  # pylint: disable=import-error
+from config import Config  # pylint: disable=import-error
 
 OPENAI_API_MODEL = "gpt-4o-realtime-preview-2024-10-01"
 OPENAI_URL_FORMAT = "wss://api.openai.com/v1/realtime?model={}"
+
+
+def terminate_call(engine, arguments):  # pylint: disable=unused-argument
+    """ Terminates the call """
+    # args = json.loads(arguments)
+    logging.info("Terminating call...")
+    engine.call.terminated = True
+
+
+def transfer_call(engine, arguments):  # pylint: disable=unused-argument
+    """ Transfers the call """
+    # args = json.loads(arguments)
+    params = {
+        'key': engine.call.b2b_key,
+        'method': "REFER",
+        'body': "",
+        'extra_headers': (
+            f"Refer-To: <{engine.transfer_to}>\r\n"
+            f"Referred-By: {engine.transfer_by}\r\n"
+        )
+    }
+    engine.call.mi_conn.execute('ua_session_update', params)
 
 
 class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
@@ -43,6 +66,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
     """ Implements WS communication with OpenAI """
 
     def __init__(self, call, cfg):
+        self.priority = ["pcma", "pcmu"]
         self.codec = self.choose_codec(call.sdp)
         self.queue = call.rtp
         self.call = call
@@ -62,24 +86,18 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.instructions = self.cfg.get("instructions", "OPENAI_INSTRUCTIONS")
         self.intro = self.cfg.get("welcome_message", "OPENAI_WELCOME_MSG")
         self.transfer_to = self.cfg.get("transfer_to", "OPENAI_TRANSFER_TO")
-        self.transfer_by = self.cfg.get("transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
+        self.transfer_by = self.cfg.get(
+            "transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
+
+        self.tools_files = self.cfg.get("tools", "OPENAI_TOOLS", [])
+        if isinstance(self.tools_files, str):
+            self.tools_files = self.tools_files.split(",")
 
         # normalize codec
         if self.codec.name == "mulaw":
             self.codec_name = "g711_ulaw"
         elif self.codec.name == "alaw":
             self.codec_name = "g711_alaw"
-
-    def choose_codec(self, sdp):
-        """ Returns the preferred codec from a list """
-        codecs = get_codecs(sdp)
-        priority = ["pcma", "pcmu"]
-        cmap = {c.name.lower(): c for c in codecs}
-        for codec in priority:
-            if codec in cmap:
-                return CODECS[codec](cmap[codec])
-
-        raise UnsupportedCodec("No supported codec found")
 
     def get_audio_format(self):
         """ Returns the corresponding audio format """
@@ -88,8 +106,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
     async def start(self):
         """ Starts OpenAI connection and logs messages """
         openai_headers = {
-                "Authorization": f"Bearer {self.key}",
-                "OpenAI-Beta": "realtime=v1"
+            "Authorization": f"Bearer {self.key}",
+            "OpenAI-Beta": "realtime=v1"
         }
         self.ws = await connect(self.url, additional_headers=openai_headers)
         try:
@@ -130,34 +148,12 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             "max_response_output_tokens": self.cfg.get("max_tokens",
                                                        "OPENAI_MAX_TOKENS",
                                                        "inf"),
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "terminate_call",
-                    "description":
-                        "Call me when any of the session's parties want "
-                        "to terminate the call."
-                        "Always say goodbye before hanging up."
-                        "Send the audio first, then call this function.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    },
-                },
-                {
-                    "type": "function",
-                    "name": "transfer_call",
-                    "description": "call the function if a request was received to transfer a call with an operator, a person",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                },
-            ],
+            "tools": [],
             "tool_choice": "auto",
         }
+
+        self.load_tools()
+
         if self.instructions:
             self.session["instructions"] = self.instructions
 
@@ -171,12 +167,70 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 await self.ws.send(json.dumps({"type": "response.create", "response": self.intro}))
             await self.handle_command()
         except ConnectionClosedError as e:
-            logging.error(f"Error while communicating with OpenAI: {e}. Terminating call.")
+            logging.error(
+                "Error while communicating with OpenAI: %s. Terminating call.", e
+            )
             self.terminate_call()
-        except Exception as e:
-            logging.error(f"Unexpected error during session: {e}. Terminating call.")
+        except Exception as e:  # pylint: disable=broad-except
+            logging.error(
+                "Unexpected error during session: %s. Terminating call.", e
+            )
             self.terminate_call()
 
+    def load_tools(self):
+        """ Loads the tools from the files """
+
+        tools = {
+            "terminate_call": {
+                "type": "function",
+                "name": "terminate_call",
+                "description":
+                    "Call me when any of the session's parties want "
+                    "to terminate the call."
+                    "Always say goodbye before hanging up."
+                    "Send the audio first, then call this function.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                },
+            },
+            "transfer_call": {
+                "type": "function",
+                "name": "transfer_call",
+                "description":
+                    "call the function if a request was received"
+                    "to transfer a call with an operator, a person",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        }
+
+        for idx, tool_file in enumerate(self.tools_files):
+            try:
+                module_name = f"functions_{idx}"
+                spec = importlib.util.spec_from_file_location(
+                    module_name, tool_file)
+                if not spec:
+                    logging.error("Cannot load functions from %s", tool_file)
+                    return
+                functions = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = functions
+                spec.loader.exec_module(functions)
+                for fct in functions.FUNCTIONS:
+                    fct["type"] = "function"
+                    tools[fct["name"]] = fct
+            except Exception as e:  # pylint: disable=broad-except
+                logging.error(
+                    "Error loading functions from %s: %s",
+                    tool_file, e
+                )
+                return
+
+        self.session["tools"] = list(tools.values())
 
     async def handle_command(self):  # pylint: disable=too-many-branches
         """ Handles a command from the server """
@@ -194,7 +248,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 logging.info(t)
                 if len(leftovers) > 0:
                     packet = await self.run_in_thread(
-                            self.codec.parse, None, leftovers)
+                        self.codec.parse, None, leftovers)
                     self.queue.put_nowait(packet)
                     leftovers = b''
 
@@ -206,25 +260,37 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             elif t == "response.audio_transcript.done":
                 logging.info("Engine: %s", msg["transcript"])
             elif t == "response.function_call_arguments.done":
-                if msg["name"] == "terminate_call":
-                    logging.info(t)
-                    self.terminate_call()
-                elif msg["name"] == "transfer_call":
-                    params = {
-                        'key': self.call.b2b_key,
-                        'method': "REFER",
-                        'body': "",
-                        'extra_headers': (
-                            f"Refer-To: <{self.transfer_to}>\r\n"
-                            f"Referred-By: {self.transfer_by}\r\n"
+                if func := self.find_tool(msg["name"]):
+                    try:
+                        func(self, msg["arguments"])
+                    except Exception as e:  # pylint: disable=broad-except
+                        logging.error(
+                            "Error executing function %s: %s",
+                            msg['name'], e
                         )
-                    }
-                    self.call.mi_conn.execute('ua_session_update', params)
-
             elif t == "error":
                 logging.info(msg)
             else:
                 logging.info(t)
+
+    def find_tool(self, name):
+        """ Finds a tool by name """
+        func = None
+        for idx in range(len(self.tools_files)):
+            module_name = f"functions_{idx}"
+            mod = sys.modules[module_name]
+            if hasattr(mod, name):
+                func = getattr(mod, name, None)
+                logging.info("Found function %s in %s", name, module_name)
+        if not func:
+            if name == "terminate_call":
+                func = terminate_call
+            elif name == "transfer_call":
+                func = transfer_call
+            else:
+                logging.error("Function %s not found", name)
+                return None
+        return func
 
     def terminate_call(self):
         """ Terminates the call """
@@ -258,10 +324,13 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         try:
             await self.ws.send(json.dumps(event))
         except ConnectionClosedError as e:
-            logging.error(f"WebSocket connection closed: {e.code}, {e.reason}")
+            logging.error(
+                "WebSocket connection closed: %s, %s",
+                e.code, e.reason
+            )
             self.terminate_call()
-        except Exception as e:
-            logging.error(f"Unexpected error while sending audio: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logging.error("Unexpected error while sending audio: %s", e)
             self.terminate_call()
 
     async def close(self):

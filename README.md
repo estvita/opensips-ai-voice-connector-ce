@@ -65,12 +65,18 @@ See the [Configuration](docs/config.md) page for all the details.
 ## Getting Started
 
 The simplest way to get the project running is using the Docker Compose files
-found in the [docker/](docker) directory. In order to use them, you need to
+found in the [examples/](./examples/) directory.
+There are 2 scenarios available:
+* [simple](./examples/simple/) setup with a OpenSIPS instance running as a B2BUA and the AI Voice Connector.
+* [more complex setup](./examples/demo-summit/) used at the OpenSIPS Summit 2025 for a workshop on
+how to build a Voice Agent using OpenSIPS and AI Voice Connector.
+
+In order to run the examples, you need to
 setup [Docker](https://www.docker.com/) on your host and then run:
 
 ``` shell
 git clone https://github.com/OpenSIPS/opensips-ai-voice-connector-ce.git
-cd opensips-ai-voice-connector-ce/docker
+cd opensips-ai-voice-connector-ce/examples/simple
 # edit the .env file and adjust the settings accordingly
 # alternatively, create a configuration file
 docker compose up

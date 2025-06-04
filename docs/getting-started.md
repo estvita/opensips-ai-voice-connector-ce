@@ -1,6 +1,6 @@
 # AI Voice Connector - Community Edition - Getting Started
 
-The simplest way to get the project running is using the Docker Compose file found in the [docker/](docker) directory. In order to use it, you need to setup [Docker](https://www.docker.com/) on your host and then:
+The simplest way to get the project running is using the Docker Compose files found in the [examples/](../examples/) directory. In order to use it, you need to setup [Docker](https://www.docker.com/) on your host and then:
 
 * **Clone the repository**
 ``` shell
@@ -9,7 +9,7 @@ git clone https://github.com/OpenSIPS/opensips-ai-voice-connector-ce.git
 
 * **Navigate to the docker directory**
 ``` shell
-cd opensips-ai-voice-connector-ce/docker
+cd opensips-ai-voice-connector-ce/examples/simple
 ```
 
 * **Edit the .env file and adjust the settings accordingly**
@@ -20,31 +20,28 @@ MI_IP=127.0.0.1 # these are the default values
 MI_PORT=8080
 ```
 
-* **Alternatively, create a configuration file**, for example `config.ini` at the root of the project:
+* **Alternatively, there is a configuration file**, [`simple.ini`](../examples/simple/conn/simple.ini), which you can use to set the configuration parameters. The file contains the following sections:
 ```
-[opensips]
-ip = 127.0.0.1
-port = 8080
-
-[engine]
-event_ip = 127.0.0.1
+[openai]
+key = #TODO: Add your OpenAI key here
+voice = alloy
+instructions = You are a helpful assistant.
+welcome_message = Hello! How can I help you?
 
 [deepgram]
-disabled = false
-key = # here you should put your Deepgram API key
-chatgpt_key = # here you should put your OpenAI API key
+key = #TODO: Add your Deepgram key here
+chatgpt_key = #TODO: Add your OpenAI key here
+welcome_message = Hello! How can I help you?
+instructions = You are a helpful assistant.
+voice = aura-arcas-en
 
-[openai]
-disabled = false
-key = # here you should put your OpenAI API key
-```
+[deepgram_native]
 
-* **If you use the configuration file, you need to set the `CONFIG_FILE` in the `.env` file**
-``` shell
-DEEPGRAM_API_KEY= ... # may be overwritten by the configuration file, if present there
-OPENAI_API_KEY= ... # may be overwritten by the configuration file, if present there
-...
-CONFIG_FILE=config.ini
+[azure]
+key = #TODO: Add your Azure key here
+region = westeurope
+chatgpt_key = #TODO: Add your OpenAI key here
+welcome_message = Hello! How can I help you?
 ```
 
 * **Pull the latest images**

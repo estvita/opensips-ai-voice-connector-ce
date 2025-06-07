@@ -39,3 +39,4 @@ The following parameters can be tuned for this engine:
 | `openai` | `turn_detection_prefix_ms` | `OPENAI_TURN_DETECT_PREFIX_MS` | no | Configures [OpenAI Turn Detection](https://platform.openai.com/docs/api-reference/realtime-client-events/session/update) `prefix_padding_ms` | `300` |
 | `openai`  |  `transfer_to`  | `OPENAI_TRANSFER_TO` | no | [SIP uri](https://en.wikipedia.org/wiki/SIP_URI_scheme) for call transfer function | not set |
 | `openai`  |  `transfer_by`  | `OPENAI_TRANSFER_BY` | no | [SIP uri](https://en.wikipedia.org/wiki/SIP_URI_scheme) for call transfer function | not set |
+| `openai`  |  `tools`  | `OPENAI_TOOLS` | no | A file or a list of files where tools available to the model are defined. You can override functions, as the model will search for a tool in the list of files and will use the last one that matches the function name. See [functions.py](../../functions.py) for examples. | not set |

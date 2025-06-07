@@ -30,7 +30,6 @@ from queue import Empty
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
 from ai import AIEngine
-from codec import get_codecs, CODECS, UnsupportedCodec
 from config import Config
 
 DEEPGRAM_VOICE_AGENT_URL = "wss://agent.deepgram.com/agent"
@@ -49,10 +48,14 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.intro = None
         self.cfg = Config.get("deepgram_native", cfg)
         self.key = self.cfg.get("key", "DEEPGRAM_API_KEY")
-        self.stt_model = self.cfg.get("speech_model", "DEEPGRAM_NATIVE_SPEECH_MODEL", "nova-3")
-        self.tts_model = self.cfg.get("voice", "DEEPGRAM_NATIVE_VOICE", "aura-asteria-en")
-        self.instructions = self.cfg.get("instructions", "DEEPGRAM_INSTRUCTIONS")
-        self.intro = self.cfg.get("welcome_message", "DEEPGRAM_NATIVE_WELCOME_MSG")
+        self.stt_model = self.cfg.get(
+            "speech_model", "DEEPGRAM_NATIVE_SPEECH_MODEL", "nova-3")
+        self.tts_model = self.cfg.get(
+            "voice", "DEEPGRAM_NATIVE_VOICE", "aura-asteria-en")
+        self.instructions = self.cfg.get(
+            "instructions", "DEEPGRAM_INSTRUCTIONS")
+        self.intro = self.cfg.get(
+            "welcome_message", "DEEPGRAM_NATIVE_WELCOME_MSG")
         self.llm_url = self.cfg.get("llm_url", "DEEPGRAM_LLM_URL")
         self.llm_key = self.cfg.get("llm_key", "DEEPGRAM_LLM_KEY")
         self.llm_model = self.cfg.get("llm_model", "DEEPGRAM_LLM_MODEL")
@@ -63,17 +66,6 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
         elif self.codec.name == "alaw":
             self.codec_name = "alaw"
 
-    def choose_codec(self, sdp):
-        """ Returns the preferred codec from a list """
-        codecs = get_codecs(sdp)
-        priority = ["pcma", "pcmu"]
-        cmap = {c.name.lower(): c for c in codecs}
-        for codec in priority:
-            if codec in cmap:
-                return CODECS[codec](cmap[codec])
-
-        raise UnsupportedCodec("No supported codec found")
-
     def get_audio_format(self):
         """ Returns the corresponding audio format """
         return self.codec_name
@@ -82,12 +74,12 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
         """ Starts Deepgram Voice Agent connection and logs messages """
         logging.info("Starting Deepgram Native")
         deepgram_headers = {
-                "Authorization": f"Token {self.key}"
+            "Authorization": "Token {self.key}"
         }
         self.ws = await connect(DEEPGRAM_VOICE_AGENT_URL, additional_headers=deepgram_headers)
         try:
             resp = json.loads(await self.ws.recv())
-            logging.info(f"Connected to Deepgram: {resp}")
+            logging.info("Connected to Deepgram: %s", resp)
         except ConnectionClosedOK:
             logging.info("WS Connection with Deepgram is closed")
             return
@@ -127,7 +119,7 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
                 logging.error("Missing LLM auth token. Cannot connect to LLM.")
                 self.terminate_call()
                 return
-            
+
             if not self.llm_model:
                 logging.error("Missing LLM model. Cannot connect to LLM.")
                 self.terminate_call()
@@ -149,18 +141,23 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
             }
             self.session["agent"]["think"]["model"] = self.llm_model if self.llm_model else "gpt-4o"
 
-        logging.info(f"Sending session: {self.session}")
+        logging.info("Sending session: {self.session}")
 
         try:
             await self.ws.send(json.dumps(self.session))
             if self.intro:
-                await self.ws.send(json.dumps({"type": "InjectAgentMessage", "message": self.intro}))
+                await self.ws.send(json.dumps({
+                    "type": "InjectAgentMessage",
+                    "message": self.intro
+                }))
             await self.handle_command()
         except ConnectionClosedError as e:
-            logging.error(f"Error while communicating with Deepgram: {e}. Terminating call.")
+            logging.error(
+                "Error while communicating with Deepgram: %s. Terminating call.", e)
             self.terminate_call()
-        except Exception as e:
-            logging.error(f"Unexpected error during session: {e}. Terminating call.")
+        except Exception as e:  # pylint: disable=broad-except
+            logging.error(
+                "Unexpected error during session: %s. Terminating call.", e)
             self.terminate_call()
 
     def terminate_call(self):
@@ -179,7 +176,7 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
                         self.queue.put_nowait(packet)
                 else:
                     msg = json.loads(smsg)
-                    logging.info(f"Received message: {msg}")
+                    logging.info("Received message: {msg}")
                     t = msg["type"]
                     if t == "AgentAudioDone":
                         if len(leftovers) > 0:
@@ -190,7 +187,10 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
                     elif t == "EndOfThought":
                         self.drain_queue()
             except Exception as e:
-                logging.error(f"Unexpected error while processing message: {type(e)}: {e}")
+                logging.error(
+                    "Unexpected error while processing message: %s: %s",
+                    type(e), e
+                )
                 raise
 
     def drain_queue(self):
@@ -215,10 +215,11 @@ class DeepgramNative(AIEngine):  # pylint: disable=too-many-instance-attributes
         try:
             await self.ws.send(audio)
         except ConnectionClosedError as e:
-            logging.error(f"WebSocket connection closed: {e}. Audio data could not be sent.")
+            logging.error(
+                "WebSocket connection closed: %e. Audio data could not be sent.", e)
             self.terminate_call()
-        except Exception as e:
-            logging.error(f"Unexpected error while sending audio: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logging.error("Unexpected error while sending audio: %s", e)
             self.terminate_call()
 
     async def close(self):

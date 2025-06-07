@@ -23,12 +23,14 @@
 Abstract class that provides the AI hooks
 """
 from abc import ABC, abstractmethod
+from codec import get_codecs, CODECS, UnsupportedCodec
 
 
 class AIEngine(ABC):
     """ Class that implements the AI logic """
 
     codec = None
+    priority = None
 
     @abstractmethod
     def __init__(self, call, cfg):
@@ -46,9 +48,15 @@ class AIEngine(ABC):
     async def close(self):
         """ closes the session """
 
-    @abstractmethod
     def choose_codec(self, sdp):
         """ Returns the preferred codec from a list """
+        codecs = get_codecs(sdp)
+        cmap = {c.name.lower(): c for c in codecs}
+
+        for codec in self.priority:
+            if codec in cmap:
+                return CODECS[codec](cmap[codec])
+        raise UnsupportedCodec("No supported codec found")
 
     def get_codec(self):
         """ returns the chosen codec """

@@ -1,6 +1,6 @@
 # AI Voice Connector - Community Edition - Azure Flavor
 
-This flavor is based on 
+This flavor is based on
 [Azure's AI Speech](https://azure.microsoft.com/en-us/products/ai-services/ai-speech/),
 which provides a suite of speech recognition and text-to-speech services.
 The Azure flavor leverages Azure's Speech-to-Text API to transcribe the SIP user's
@@ -14,7 +14,7 @@ played back to the user.
 
 ### Speech to Text
 
-It is using Azure's 
+It is using Azure's
 [Speech-to-Text](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/index-speech-to-text)
 service to interpret the user's input. The service supports multiple languages
 and can be customized from the configuration file. You can find out more about

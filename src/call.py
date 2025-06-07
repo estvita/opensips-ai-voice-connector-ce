@@ -47,6 +47,7 @@ class NoAvailablePorts(Exception):
 class Call():  # pylint: disable=too-many-instance-attributes
     """ Class that handles a call """
     # pylint: disable=too-many-arguments, too-many-positional-arguments
+
     def __init__(self,
                  b2b_key,
                  mi_conn,

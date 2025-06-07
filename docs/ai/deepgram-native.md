@@ -1,19 +1,19 @@
 # AI Voice Connector - Community Edition - Deepgram Native Flavor
 
-The Deepgram Native flavor uses the [Deepgram's](https://deepgram.com/) 
-new Voice Agent API that provides direct Speech-to-Speech interpretation of 
-the user's conversation. This setup allows for real-time interpretation and 
+The Deepgram Native flavor uses the [Deepgram's](https://deepgram.com/)
+new Voice Agent API that provides direct Speech-to-Speech interpretation of
+the user's conversation. This setup allows for real-time interpretation and
 response generation, streamlining interactions without intermediate steps.
 
 ## Implementation
 
-The project uses the native WebSocket connection to push the decapsulated RTP 
-from the user to the Deepgram engine and get the response back. Then, it grabs 
-the response, packs it back by adding the RTP header, and streams it back to 
+The project uses the native WebSocket connection to push the decapsulated RTP
+from the user to the Deepgram engine and get the response back. Then, it grabs
+the response, packs it back by adding the RTP header, and streams it back to
 the user.
 
-It does not have any transcoding capabilities, thus communication is limited 
-to g711 PCMU and PCMA 
+It does not have any transcoding capabilities, thus communication is limited
+to g711 PCMU and PCMA
 [codecs](https://developers.deepgram.com/docs/configure-voice-agent).
 
 ## Configuration

@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+.DS_Store
+.env
+*.egg-info/
+dist/
+build/
+docs/
+examples/
+docker/

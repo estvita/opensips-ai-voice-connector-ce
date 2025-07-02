@@ -253,6 +253,9 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             elif t == "response.audio_transcript.done":
                 logging.info("Engine: %s", msg["transcript"])            
 
+            elif t == "conversation.item.input_audio_transcription.failed":
+                logging.error(msg)
+                self.terminate_call()
             elif t == "error":
                 logging.info(msg)
             else:

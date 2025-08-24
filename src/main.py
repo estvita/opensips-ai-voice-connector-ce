@@ -21,8 +21,10 @@
 
 """ Main module that starts the Deepgram AI integration """
 
+import os
 import sys
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import argparse
 from config import Config
 from version import __version__
@@ -43,13 +45,23 @@ parser.add_argument('-c', '--config',
                     default=None,
                     help='specify a configuration file')
 
+parser.add_argument("-l", "--loglevel",
+                    choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                    default='INFO',
+                    help="Log level")
+
 parsed_args = parser.parse_args()
 Config.init(parsed_args.config)
 
-logging.basicConfig(
-    level=logging.INFO,  # Set level to INFO or DEBUG for more verbosity
-    format='%(asctime)s - tid: %(thread)d - %(levelname)s - %(message)s',
+os.makedirs('logs', exist_ok=True)
+log_handler = TimedRotatingFileHandler(
+    'logs/app.log', when='midnight', interval=1, backupCount=7, encoding='utf-8'
 )
+log_handler.setFormatter(logging.Formatter('%(asctime)s - tid: %(thread)d - %(levelname)s - %(message)s'))
+
+logger = logging.getLogger()
+logger.setLevel(getattr(logging, parsed_args.loglevel))
+logger.addHandler(log_handler)
 
 if __name__ == '__main__':
     from engine import run

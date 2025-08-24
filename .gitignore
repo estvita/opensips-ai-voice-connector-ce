@@ -3,3 +3,4 @@ src/__pycache__/*
 *\.ini
 .venv
 docker/.env
+logs/*

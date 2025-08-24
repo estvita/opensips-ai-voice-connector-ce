@@ -34,12 +34,12 @@ from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
 from ai import AIEngine
 from codec import get_codecs, CODECS, UnsupportedCodec
 from config import Config
+from mcp_client import MCPClient
 
-import dify
 
 OPENAI_API_MODEL = "gpt-4o-realtime-preview-2024-10-01"
 OPENAI_URL_FORMAT = "wss://api.openai.com/v1/realtime?model={}"
-DIFY_API_URL = "https://api.dify.ai/v1"
+
 
 class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
 
@@ -55,8 +55,6 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.transfer_to = None
         self.transfer_by = None
         self.tools = None
-        self.dify_url = None
-        self.dify_key = None
         self.cfg = Config.get("openai", cfg)
         self.model = self.cfg.get("model", "OPENAI_API_MODEL",
                                   OPENAI_API_MODEL)
@@ -70,12 +68,13 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.transfer_to = self.cfg.get("transfer_to", "OPENAI_TRANSFER_TO")
         self.transfer_by = self.cfg.get("transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
         self.tools = self.cfg.get("tools", "OPENAI_TOOLS")
-        self.dify_url = self.cfg.get("dify_url")
-        self.dify_key = self.cfg.get("dify_key")
-        if not self.dify_url or not self.dify_key:
-            self.dify_cfg = Config.get("dify")
-            self.dify_url = self.dify_cfg.get("dify_url", "DIFY_API_URL", DIFY_API_URL)
-            self.dify_key = self.dify_cfg.get("dify_key", "DIFY_API_KEY")
+
+        # Initialize MCP client if server URL is provided
+        self.mcp_client = None
+        mcp_server_url = self.cfg.get("mcp_url")
+        mcp_api_key = self.cfg.get("mcp_key")
+        if mcp_server_url:
+            self.mcp_client = MCPClient(mcp_server_url, mcp_api_key)
 
         # normalize codec
         if self.codec.name == "mulaw":
@@ -114,6 +113,31 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             logging.error(e)
             return
 
+        # Get MCP tools before creating session
+        openai_tools = []
+        if self.mcp_client:
+            try:
+                await self.mcp_client.initialize()
+                mcp_tools = await self.mcp_client.get_tools()
+                if mcp_tools:
+                    logging.info(f"OpenAI: Found {len(mcp_tools)} MCP tools")
+                    # Convert MCP tools to OpenAI format
+                    for tool in mcp_tools:
+                        openai_tool = {
+                            "type": "function",
+                            "name": tool["name"],
+                            "description": tool["description"],
+                            "parameters": tool["inputSchema"]
+                        }
+                        openai_tools.append(openai_tool)
+                    logging.info(f"OpenAI: Converted MCP tools: {[t['name'] for t in openai_tools]}")
+                else:
+                    logging.info("OpenAI: No MCP tools available")
+            except Exception as e:
+                logging.error(f"OpenAI: Error initializing MCP client: {e}")
+        else:
+            logging.info("OpenAI: No MCP client configured")
+
         self.session = {
             "turn_detection": {
                 "type": self.cfg.get("turn_detection_type",
@@ -143,13 +167,24 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             "max_response_output_tokens": self.cfg.get("max_tokens",
                                                        "OPENAI_MAX_TOKENS",
                                                        "inf"),
-            "tools": self.tools,
             "tool_choice": "auto",
         }
+        
+        # Set tools based on what's available
+        if openai_tools:
+            self.session["tools"] = openai_tools
+            logging.info(f"OpenAI: Using MCP tools in session: {[t['name'] for t in openai_tools]}")
+        elif self.tools:
+            self.session["tools"] = self.tools
+            logging.info("OpenAI: Using configured tools in session")
+        else:
+            logging.info("OpenAI: No tools configured for session")
+        
         if self.instructions:
             self.session["instructions"] = self.instructions
 
         try:
+            logging.info(f"OpenAI: Sending session update with tools: {json.dumps(self.session.get('tools', []), indent=2)}")
             await self.ws.send(json.dumps({"type": "session.update", "session": self.session}))
             if self.intro:
                 self.intro = {
@@ -217,24 +252,32 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                                 )
                             }
                             self.call.mi_conn.execute('ua_session_update', params)
-
                         else:
-                            # if dify.ai workflow is connected
-                            if self.dify_url and self.dify_key:
-                                dify_client = dify.WorkflowClient(self.dify_key, self.dify_url)
-                                inputs = {
-                                    "client_phone": self.call.user,
-                                    "function_name": function_name, 
-                                    **params_dict
-                                    }
+                            # Use MCP server for function calling
+                            logging.info(f"OpenAI: Function calling detected - function: {function_name}, params: {params_dict}")
+                            
+                            if self.mcp_client:
+                                logging.info(f"OpenAI: MCP client is available, calling tool")
                                 try:
-                                    workflow_resp = dify_client.run(inputs, response_mode="blocking", user=response.get("conversation_id"))
-                                    workflow_resp.raise_for_status()
-                                    dify_resp = workflow_resp.json()
-                                    function_response = dify_resp.get("data", {}).get("outputs", {})
-                                except requests.RequestException as e:
-                                    logging.error(f"HTTP error occurred: {e}")
-                                    function_response = f"Eroor: {workflow_resp.json()}"
+                                    function_response = await self.mcp_client.call_tool(function_name, params_dict)
+                                    logging.info(f"OpenAI: MCP tool call completed, response: {function_response}")
+                                    
+                                    if isinstance(function_response, dict):
+                                        if "error" in function_response:
+                                            function_response = f"Error: {function_response['error']}"
+                                            logging.error(f"OpenAI: MCP tool returned error: {function_response}")
+                                        else:
+                                            function_response = str(function_response.get("result", function_response))
+                                            logging.info(f"OpenAI: MCP tool returned result: {function_response}")
+                                    else:
+                                        function_response = str(function_response)
+                                        logging.info(f"OpenAI: MCP tool returned non-dict response: {function_response}")
+                                except Exception as e:
+                                    logging.error(f"OpenAI: Exception calling MCP tool {function_name}: {e}")
+                                    function_response = f"Error calling function: {str(e)}"
+                            else:
+                                logging.warning(f"OpenAI: No MCP client available for function: {function_name}")
+                                function_response = f"Function {function_name} not available"
 
                         if function_response:
                             payload = {
@@ -259,7 +302,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             elif t == "error":
                 logging.info(msg)
             else:
-                logging.info(t)
+                logging.debug(t)
 
     def terminate_call(self):
         """ Terminates the call """
@@ -300,6 +343,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             self.terminate_call()
 
     async def close(self):
+        if self.mcp_client:
+            await self.mcp_client.close()
         await self.ws.close()
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

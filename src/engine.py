@@ -58,23 +58,28 @@ def mi_reply(key, method, code, reason, body=None):
     mi_conn.execute('ua_session_reply', params)
 
 
-def fetch_bot_config(api_url, bot):
+def fetch_bot_config(api_url, bot, api_key=None):
     """
     Sends a GET request to the API to fetch the bot configuration.
 
     :param api_url: URL of the API endpoint.
     :param bot: Name of the bot to fetch configuration for.
+    :param api_key: Optional API key for authentication.
     :return: The configuration dictionary if successful, otherwise None.
     """
     try:
-        response = requests.get(api_url, params={"bot": bot})
+        headers = {}
+        if api_key:
+            headers['Authorization'] = f'Token {api_key}'
+        
+        response = requests.get(api_url, params={"bot": bot}, headers=headers)
         if response.status_code == 200:
             return response.json()
         else:
             logging.exception(f"Failed to fetch data from API. Status: {response.status_code}, Message: {response.text}")
     except requests.RequestException as e:
         logging.exception(f"Error during API call: {e}")
-    return None
+        return None
 
 
 def parse_params(params):
@@ -82,17 +87,17 @@ def parse_params(params):
     flavor = None
     extra_params = None
     api_url = Config.engine("api_url", "API_URL")
+    api_key = Config.engine("api_key", "API_KEY")
     bot_header = Config.engine("bot_header", "BOT_HEADER", "To")
     cfg = None
     bot = utils.get_user(params, bot_header)
     to = utils.get_address(params, "To")
     user = utils.get_user(params, "From")
     if bot and api_url:
-        bot_data = fetch_bot_config(api_url, bot)
+        bot_data = fetch_bot_config(api_url, bot, api_key)
         if bot_data:
             flavor = bot_data.get('flavor')
             cfg = bot_data[flavor]
-
     if "extra_params" in params and params["extra_params"]:
         extra_params = json.loads(params["extra_params"])
         if "flavor" in extra_params:

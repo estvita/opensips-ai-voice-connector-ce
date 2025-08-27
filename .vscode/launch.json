@@ -12,7 +12,7 @@
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
             "args": [
-                "-c", "config.ini"
+                "-c", "config.ini", "-l", "INFO"
             ]
         }
     ]

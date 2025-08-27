@@ -34,7 +34,6 @@ from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
 from ai import AIEngine
 from codec import get_codecs, CODECS, UnsupportedCodec
 from config import Config
-from mcp_client import MCPClient
 
 
 OPENAI_API_MODEL = "gpt-4o-realtime-preview-2024-10-01"
@@ -70,12 +69,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.transfer_by = self.cfg.get("transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
         self.tools = self.cfg.get("tools", "OPENAI_TOOLS")
 
-        # Initialize MCP client if server URL is provided
-        self.mcp_client = None
-        mcp_server_url = self.cfg.get("mcp_url")
-        mcp_api_key = self.cfg.get("mcp_key")
-        if mcp_server_url:
-            self.mcp_client = MCPClient(mcp_server_url, mcp_api_key)
+        self.mcp_url = self.cfg.get("mcp_url")
+        self.mcp_key = self.cfg.get("mcp_key")
 
         # normalize codec
         if self.codec.name == "mulaw":
@@ -118,30 +113,6 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             self.logger.error(e)
             return
 
-        # Get MCP tools before creating session
-        openai_tools = []
-        if self.mcp_client:
-            try:
-                await self.mcp_client.initialize()
-                mcp_tools = await self.mcp_client.get_tools()
-                if mcp_tools:
-                    self.logger.info(f"OpenAI: Found {len(mcp_tools)} MCP tools")
-                    # Convert MCP tools to OpenAI format
-                    for tool in mcp_tools:
-                        openai_tool = {
-                            "type": "function",
-                            "name": tool["name"],
-                            "description": tool["description"],
-                            "parameters": tool["inputSchema"]
-                        }
-                        openai_tools.append(openai_tool)
-                    self.logger.info(f"OpenAI: Converted MCP tools: {[t['name'] for t in openai_tools]}")
-                else:
-                    self.logger.info("OpenAI: No MCP tools available")
-            except Exception as e:
-                self.logger.error(f"OpenAI: Error initializing MCP client: {e}")
-        else:
-            self.logger.info("OpenAI: No MCP client configured")
 
         self.session = {
             "turn_detection": {
@@ -172,14 +143,29 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             "max_response_output_tokens": self.cfg.get("max_tokens",
                                                        "OPENAI_MAX_TOKENS",
                                                        "inf"),
+            "tools": [],
             "tool_choice": "auto",
         }
-        
+        if self.transfer_to:
+            self.session["tools"].append({
+                "type": "function",
+                "name": "transfer_call",
+                "description": "call the function if a request was received to transfer a call with an operator, a person, or a department",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            })
+        # if self.mcp_url:
+        #     self.session["tools"].append({
+        #         "type": "mcp",
+        #         "server_label": "testserver",
+        #         "server_url": self.mcp_url,
+        #         "require_approval": "never",
+        #     })
         # Set tools based on what's available
-        if openai_tools:
-            self.session["tools"] = openai_tools
-            self.logger.info(f"OpenAI: Using MCP tools in session: {[t['name'] for t in openai_tools]}")
-        elif self.tools:
+        if self.tools:
             self.session["tools"] = self.tools
             self.logger.info("OpenAI: Using configured tools in session")
         else:
@@ -265,32 +251,6 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                                 )
                             }
                             self.call.mi_conn.execute('ua_session_update', params)
-                        else:
-                            # Use MCP server for function calling
-                            self.logger.info(f"OpenAI: Function calling detected - function: {function_name}, params: {params_dict}")
-                            
-                            if self.mcp_client:
-                                self.logger.info(f"OpenAI: MCP client is available, calling tool")
-                                try:
-                                    function_response = await self.mcp_client.call_tool(function_name, params_dict)
-                                    self.logger.info(f"OpenAI: MCP tool call completed, response: {function_response}")
-                                    
-                                    if isinstance(function_response, dict):
-                                        if "error" in function_response:
-                                            function_response = f"Error: {function_response['error']}"
-                                            self.logger.error(f"OpenAI: MCP tool returned error: {function_response}")
-                                        else:
-                                            function_response = str(function_response.get("result", function_response))
-                                            self.logger.info(f"OpenAI: MCP tool returned result: {function_response}")
-                                    else:
-                                        function_response = str(function_response)
-                                        self.logger.info(f"OpenAI: MCP tool returned non-dict response: {function_response}")
-                                except Exception as e:
-                                    self.logger.error(f"OpenAI: Exception calling MCP tool {function_name}: {e}")
-                                    function_response = f"Error calling function: {str(e)}"
-                            else:
-                                self.logger.warning(f"OpenAI: No MCP client available for function: {function_name}")
-                                function_response = f"Function {function_name} not available"
 
                         if function_response:
                             payload = {
@@ -360,8 +320,6 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             self.terminate_call()
 
     async def close(self):
-        if self.mcp_client:
-            await self.mcp_client.close()
         await self.ws.close()
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

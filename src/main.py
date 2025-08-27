@@ -47,7 +47,7 @@ parser.add_argument('-c', '--config',
 
 parser.add_argument("-l", "--loglevel",
                     choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-                    default='INFO',
+                    default='ERROR',
                     help="Log level")
 
 parsed_args = parser.parse_args()

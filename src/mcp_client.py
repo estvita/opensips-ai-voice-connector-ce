@@ -64,10 +64,8 @@ class MCPClient:
             
             headers = {'Content-Type': 'application/json'}
             if self.api_key:
-                headers['Authorization'] = f'Bearer {self.api_key}'
-            
-            logging.debug(f"MCP: Init payload: {json.dumps(init_payload, indent=2)}")
-            
+                headers['Authorization'] = f'Bearer {self.api_key}'            
+           
             async with self.session.post(self.server_url, json=init_payload, headers=headers) as response:
                 logging.debug(f"MCP: Init response status: {response.status}")
                 

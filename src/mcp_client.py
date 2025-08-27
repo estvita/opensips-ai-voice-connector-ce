@@ -43,9 +43,7 @@ class MCPClient:
         """Initialize connection to MCP server and get available tools"""
         if self.initialized:
             return
-            
-        logging.info(f"MCP: Starting initialization for server: {self.server_url}")
-        
+      
         try:
             self.session = aiohttp.ClientSession()
             
@@ -68,16 +66,14 @@ class MCPClient:
             if self.api_key:
                 headers['Authorization'] = f'Bearer {self.api_key}'
             
-            logging.info(f"MCP: Sending initialization request to {self.server_url}")
-            logging.info(f"MCP: Init payload: {json.dumps(init_payload, indent=2)}")
+            logging.debug(f"MCP: Init payload: {json.dumps(init_payload, indent=2)}")
             
             async with self.session.post(self.server_url, json=init_payload, headers=headers) as response:
-                logging.info(f"MCP: Init response status: {response.status}")
+                logging.debug(f"MCP: Init response status: {response.status}")
                 
                 if response.status == 200:
                     init_result = await response.json()
                     logging.info(f"MCP: Init response: {json.dumps(init_result, indent=2)}")
-                    logging.info(f"MCP: Client initialized successfully for server: {self.server_url}")
                 else:
                     error_text = await response.text()
                     logging.error(f"MCP: Failed to initialize client: {response.status} - {error_text}")
@@ -109,25 +105,23 @@ class MCPClient:
                 "id": 2,
                 "method": "tools/list"
             }
-            
-            logging.info(f"MCP: Requesting tools: {json.dumps(tools_payload, indent=2)}")
-            
+                        
             async with self.session.post(self.server_url, json=tools_payload, headers=headers) as response:
-                logging.info(f"MCP: Tools response status: {response.status}")
+                logging.debug(f"MCP: Tools response status: {response.status}")
                 
                 if response.status == 200:
                     data = await response.json()
-                    logging.info(f"MCP: Raw tools response: {json.dumps(data, indent=2)}")
+                    logging.debug(f"MCP: Raw tools response: {json.dumps(data, indent=2)}")
                     
                     # Handle JSON-RPC response format
                     if isinstance(data, dict) and 'result' in data:
                         result = data['result']
                         if 'tools' in result:
                             tools = result['tools']
-                            logging.info(f"MCP: Found {len(tools)} tools")
+                            logging.debug(f"MCP: Found {len(tools)} tools")
                             return tools
                         else:
-                            logging.info(f"MCP: No tools in result. Available keys: {list(result.keys())}")
+                            logging.debug(f"MCP: No tools in result. Available keys: {list(result.keys())}")
                     else:
                         logging.info(f"MCP: Unexpected response format: {type(data)}")
                     
@@ -168,7 +162,6 @@ class MCPClient:
                 }
             }
             
-            logging.info(f"MCP: Sending POST request to {self.server_url}")
             logging.info(f"MCP: Request payload: {json.dumps(call_payload, indent=2)}")
             
             async with self.session.post(self.server_url, json=call_payload, headers=headers) as response:

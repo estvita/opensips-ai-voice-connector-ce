@@ -32,6 +32,7 @@ from config import Config
 
 from rtp import decode_rtp_packet, generate_rtp_packet
 from utils import get_ai
+from call_logger import create_call_logger
 
 rtp_cfg = Config.get("rtp")
 min_rtp_port = int(rtp_cfg.get("min_port", "RTP_MIN_PORT", "35000"))
@@ -54,7 +55,8 @@ class Call():  # pylint: disable=too-many-instance-attributes
                  flavor: str,
                  to: str,
                  user: str,
-                 cfg):
+                 cfg,
+                 bot_id=None):
         host_ip = rtp_cfg.get('bind_ip', 'RTP_BIND_IP', '0.0.0.0')
         try:
             hostname = socket.gethostbyname(socket.gethostname())
@@ -80,6 +82,25 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.to = to
         self.user = user
         self.sdp = sdp
+        
+        # Create call-specific logger
+        # Use provided bot_id or fallback to other sources
+        if not bot_id:
+            if cfg:
+                bot_id = cfg.get("bot_id")
+        if not bot_id and hasattr(self, 'user') and self.user:
+            # Use user as bot_id if available
+            bot_id = self.user
+        if not bot_id:
+            # Extract bot_id from b2b_key if possible
+            # Format: B2B.{ip}.{timestamp}.{random}
+            parts = b2b_key.split('.')
+            if len(parts) >= 4:
+                bot_id = f"bot_{parts[1]}_{parts[2]}"  # Use IP and timestamp as bot_id
+        
+        self.call_logger = create_call_logger(b2b_key, bot_id)
+        self.logger = self.call_logger.get_logger()
+        
         self.ai = get_ai(flavor, self, cfg)
 
         self.codec = self.ai.get_codec()
@@ -95,7 +116,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         self.first_packet = True
         loop = asyncio.get_running_loop()
         loop.add_reader(self.serversock.fileno(), self.read_rtp)
-        logging.info("handling %s using %s AI", b2b_key, flavor)
+        self.logger.info("handling %s using %s AI", b2b_key, flavor)
 
     def bind(self, host_ip):
         """ Binds the call to a port """
@@ -104,7 +125,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         port = secrets.choice(list(available_ports))
         available_ports.remove(port)
         self.serversock.bind((host_ip, port))
-        logging.info("Bound to %s:%d", host_ip, port)
+        self.logger.info("Bound to %s:%d", host_ip, port)
 
     def get_body(self):
         """ Retrieves the SDP built """
@@ -131,7 +152,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         """ Resumes the call's audio """
         if not self.paused:
             return
-        logging.info("resuming %s", self.b2b_key)
+        self.logger.info("resuming %s", self.b2b_key)
         self.paused = False
         self.sdp.media[0].direction = "sendrecv"
 
@@ -139,7 +160,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
         """ Pauses the call's audio """
         if self.paused:
             return
-        logging.info("pausing %s", self.b2b_key)
+        self.logger.info("pausing %s", self.b2b_key)
         self.sdp.media[0].direction = "recvonly"
 
         self.paused = True
@@ -159,7 +180,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
             if adr[0] != self.client_addr or adr[1] != self.client_port:
                 return
         except socket.timeout as e:
-            logging.exception(e)
+            self.logger.exception(e)
             return
 
         # Drop requests if paused
@@ -225,7 +246,7 @@ class Call():  # pylint: disable=too-many-instance-attributes
 
     async def close(self):
         """ Closes the call """
-        logging.info("Call %s closing", self.b2b_key)
+        self.logger.info("Call %s closing", self.b2b_key)
         loop = asyncio.get_running_loop()
         loop.remove_reader(self.serversock.fileno())
         free_port = self.serversock.getsockname()[1]
@@ -233,10 +254,12 @@ class Call():  # pylint: disable=too-many-instance-attributes
         available_ports.add(free_port)
         self.stop_event.set()
         await self.ai.close()
+        # Cleanup call logger
+        self.call_logger.cleanup()
 
     def terminate(self):
         """ Terminates the call """
-        logging.info("Terminating call %s", self.b2b_key)
+        self.logger.info("Terminating call %s", self.b2b_key)
         self.mi_conn.execute("ua_session_terminate", {"key": self.b2b_key})
         asyncio.create_task(self.close())
 

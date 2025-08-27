@@ -106,6 +106,16 @@ def get_user(params, header):
     return adr.uri.user.lower() if adr.uri else None
 
 
+def get_domain(params, header):
+    """ 
+    Returns the Domain from the SIP headers
+    header - To or From
+    """
+
+    adr = get_address(params, header)
+    return adr.uri.host.lower() if adr.uri else None
+
+
 def _dialplan_match(regex, string):
     """ Checks if a regex matches the string """
     pattern = re.compile(regex)
@@ -155,6 +165,7 @@ def get_ai_flavor(params):
 
 def get_ai(flavor, call, cfg):
     """ Returns an AI object """
-    return FLAVORS[flavor](call, cfg)
+    logger = getattr(call, 'logger', None)
+    return FLAVORS[flavor](call, cfg, logger)
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

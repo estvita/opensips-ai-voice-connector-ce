@@ -58,26 +58,30 @@ def mi_reply(key, method, code, reason, body=None):
     mi_conn.execute('ua_session_reply', params)
 
 
-def fetch_bot_config(api_url, bot, api_key=None):
+def fetch_bot_config(api_url, bot, api_key=None, bot_domain=None):
     """
     Sends a GET request to the API to fetch the bot configuration.
-
-    :param api_url: URL of the API endpoint.
-    :param bot: Name of the bot to fetch configuration for.
-    :param api_key: Optional API key for authentication.
-    :return: The configuration dictionary if successful, otherwise None.
+    
+    :param api_url: The base URL of the API
+    :param bot: The bot identifier
+    :param api_key: Optional API key for authentication
+    :param bot_domain: Optional domain for the bot
+    :return: Bot configuration dictionary or None if failed
     """
     try:
         headers = {}
         if api_key:
             headers['Authorization'] = f'Token {api_key}'
         
-        response = requests.get(api_url, params={"bot": bot}, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logging.exception(f"Failed to fetch data from API. Status: {response.status_code}, Message: {response.text}")
-    except requests.RequestException as e:
+        # Add domain to request if provided
+        params = {"bot": bot}
+        if bot_domain:
+            params['domain'] = bot_domain
+            
+        response = requests.get(f"{api_url}", headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
         logging.exception(f"Error during API call: {e}")
         return None
 
@@ -90,27 +94,50 @@ def parse_params(params):
     api_key = Config.engine("api_key", "API_KEY")
     bot_header = Config.engine("bot_header", "BOT_HEADER", "To")
     cfg = None
+    
+    # Check if extra_params contains bot_header and override if it does
+    if "extra_params" in params and params["extra_params"]:
+        extra_params = json.loads(params["extra_params"])
+        if "bot_header" in extra_params:
+            bot_header = extra_params["bot_header"]
+        if "flavor" in extra_params:
+            flavor = extra_params["flavor"]
+    
+    # Get bot using the final bot_header (either from config or extra_params)
     bot = utils.get_user(params, bot_header)
     to = utils.get_address(params, "To")
     user = utils.get_user(params, "From")
-    if bot and api_url:
-        bot_data = fetch_bot_config(api_url, bot, api_key)
+    
+    # Extract domain from bot header
+    domain_header = bot_header
+    if bot_header == "Contact":
+        domain_header = "To"
+    bot_domain = utils.get_domain(params, domain_header)
+    
+    # If flavor is provided in extra_params, use those settings instead of API
+    if extra_params and flavor and flavor in extra_params:
+        cfg = extra_params[flavor]
+    # Otherwise, if we have bot_header and API URL, fetch bot config from API
+    elif bot and api_url:
+        bot_data = fetch_bot_config(api_url, bot, api_key, bot_domain)
         if bot_data:
             flavor = bot_data.get('flavor')
             cfg = bot_data[flavor]
-    if "extra_params" in params and params["extra_params"]:
-        extra_params = json.loads(params["extra_params"])
-        if "flavor" in extra_params:
-            flavor = extra_params["flavor"]
+        else:
+            return None
+    
+    # If still no flavor, try to determine it from other sources
     if not flavor:
         flavor = utils.get_ai_flavor(params)
-    if extra_params and flavor in extra_params:
+    
+    # If we have extra_params with flavor settings, merge them with existing cfg
+    if extra_params and flavor and flavor in extra_params:
         if cfg is None:
             cfg = extra_params[flavor]
         else:
             cfg.update(extra_params[flavor])
 
-    return flavor, to, user, cfg
+    return flavor, to, user, cfg, bot
 
 
 def handle_call(call, key, method, params):
@@ -141,8 +168,13 @@ def handle_call(call, key, method, params):
             return
 
         try:
-            flavor, to, user, cfg = parse_params(params)
-            new_call = Call(key, mi_conn, sdp, flavor, to, user, cfg)
+            result = parse_params(params)
+            if result:
+                flavor, to, user, cfg, bot = result
+            else:
+                mi_reply(key, method, 404, 'Bot Not Found')
+                return
+            new_call = Call(key, mi_conn, sdp, flavor, to, user, cfg, bot)
             calls[key] = new_call
             mi_reply(key, method, 200, 'OK', new_call.get_body())
         except UnsupportedCodec:
@@ -176,6 +208,7 @@ def handle_call(call, key, method, params):
 
 
 def udp_handler(data):
+    logging.info(f"Received event: {data}")
     """ UDP handler of events received """
 
     if 'params' not in data:

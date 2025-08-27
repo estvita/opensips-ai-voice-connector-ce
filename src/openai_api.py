@@ -45,10 +45,11 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     """ Implements WS communication with OpenAI """
 
-    def __init__(self, call, cfg):
+    def __init__(self, call, cfg, logger=None):
         self.codec = self.choose_codec(call.sdp)
         self.queue = call.rtp
         self.call = call
+        self.logger = logger or logging.getLogger()
         self.ws = None
         self.session = None
         self.intro = None
@@ -104,13 +105,17 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 "OpenAI-Beta": "realtime=v1"
         }
         self.ws = await connect(self.url, additional_headers=openai_headers)
+        self.logger.info(f"OpenAI: WebSocket connection established: {self.ws}")
+        
         try:
-            json.loads(await self.ws.recv())
+            first_message = await self.ws.recv()
+            self.logger.info(f"OpenAI: First message received: {first_message}")
+            json.loads(first_message)
         except ConnectionClosedOK:
-            logging.info("WS Connection with OpenAI is closed")
+            self.logger.info("WS Connection with OpenAI is closed")
             return
         except ConnectionClosedError as e:
-            logging.error(e)
+            self.logger.error(e)
             return
 
         # Get MCP tools before creating session
@@ -120,7 +125,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 await self.mcp_client.initialize()
                 mcp_tools = await self.mcp_client.get_tools()
                 if mcp_tools:
-                    logging.info(f"OpenAI: Found {len(mcp_tools)} MCP tools")
+                    self.logger.info(f"OpenAI: Found {len(mcp_tools)} MCP tools")
                     # Convert MCP tools to OpenAI format
                     for tool in mcp_tools:
                         openai_tool = {
@@ -130,13 +135,13 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                             "parameters": tool["inputSchema"]
                         }
                         openai_tools.append(openai_tool)
-                    logging.info(f"OpenAI: Converted MCP tools: {[t['name'] for t in openai_tools]}")
+                    self.logger.info(f"OpenAI: Converted MCP tools: {[t['name'] for t in openai_tools]}")
                 else:
-                    logging.info("OpenAI: No MCP tools available")
+                    self.logger.info("OpenAI: No MCP tools available")
             except Exception as e:
-                logging.error(f"OpenAI: Error initializing MCP client: {e}")
+                self.logger.error(f"OpenAI: Error initializing MCP client: {e}")
         else:
-            logging.info("OpenAI: No MCP client configured")
+            self.logger.info("OpenAI: No MCP client configured")
 
         self.session = {
             "turn_detection": {
@@ -173,18 +178,18 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         # Set tools based on what's available
         if openai_tools:
             self.session["tools"] = openai_tools
-            logging.info(f"OpenAI: Using MCP tools in session: {[t['name'] for t in openai_tools]}")
+            self.logger.info(f"OpenAI: Using MCP tools in session: {[t['name'] for t in openai_tools]}")
         elif self.tools:
             self.session["tools"] = self.tools
-            logging.info("OpenAI: Using configured tools in session")
+            self.logger.info("OpenAI: Using configured tools in session")
         else:
-            logging.info("OpenAI: No tools configured for session")
+            self.logger.info("OpenAI: No tools configured for session")
         
         if self.instructions:
             self.session["instructions"] = self.instructions
 
         try:
-            logging.info(f"OpenAI: Sending session update with tools: {json.dumps(self.session.get('tools', []), indent=2)}")
+            self.logger.info(f"OpenAI: Sending session update with tools: {json.dumps(self.session.get('tools', []), indent=2)}")
             await self.ws.send(json.dumps({"type": "session.update", "session": self.session}))
             if self.intro:
                 self.intro = {
@@ -194,10 +199,10 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 await self.ws.send(json.dumps({"type": "response.create", "response": self.intro}))
             await self.handle_command()
         except ConnectionClosedError as e:
-            logging.error(f"Error while communicating with OpenAI: {e}. Terminating call.")
+            self.logger.error(f"Error while communicating with OpenAI: {e}. Terminating call.")
             self.terminate_call()
         except Exception as e:
-            logging.error(f"Unexpected error during session: {e}. Terminating call.")
+            self.logger.error(f"Unexpected error during session: {e}. Terminating call.")
             self.terminate_call()
 
 
@@ -214,7 +219,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 for packet in packets:
                     self.queue.put_nowait(packet)
             elif t == "response.audio.done":
-                logging.info(t)
+                self.logger.info(t)
                 if len(leftovers) > 0:
                     packet = await self.run_in_thread(
                             self.codec.parse, None, leftovers)
@@ -229,6 +234,14 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             # https://platform.openai.com/docs/guides/realtime-conversations#function-calling
             elif t == "response.done":
                 response = msg["response"]
+                
+                # Check for failed status
+                if response.get("status") == "failed":                    
+                    self.logger.error(f"OpenAI: Response failed: {response}")                    
+                    # Terminate call on failure
+                    self.terminate_call()
+                    return
+                
                 for item in response["output"]:
                     if item.get('type') == 'function_call':
                         function_name = item.get("name")
@@ -239,7 +252,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                             params_dict = {}
                         function_response = None
                         if function_name == "terminate_call":
-                            logging.info(t)
+                            self.logger.info(t)
                             self.terminate_call()
                         elif function_name == "transfer_call":
                             params = {
@@ -254,29 +267,29 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                             self.call.mi_conn.execute('ua_session_update', params)
                         else:
                             # Use MCP server for function calling
-                            logging.info(f"OpenAI: Function calling detected - function: {function_name}, params: {params_dict}")
+                            self.logger.info(f"OpenAI: Function calling detected - function: {function_name}, params: {params_dict}")
                             
                             if self.mcp_client:
-                                logging.info(f"OpenAI: MCP client is available, calling tool")
+                                self.logger.info(f"OpenAI: MCP client is available, calling tool")
                                 try:
                                     function_response = await self.mcp_client.call_tool(function_name, params_dict)
-                                    logging.info(f"OpenAI: MCP tool call completed, response: {function_response}")
+                                    self.logger.info(f"OpenAI: MCP tool call completed, response: {function_response}")
                                     
                                     if isinstance(function_response, dict):
                                         if "error" in function_response:
                                             function_response = f"Error: {function_response['error']}"
-                                            logging.error(f"OpenAI: MCP tool returned error: {function_response}")
+                                            self.logger.error(f"OpenAI: MCP tool returned error: {function_response}")
                                         else:
                                             function_response = str(function_response.get("result", function_response))
-                                            logging.info(f"OpenAI: MCP tool returned result: {function_response}")
+                                            self.logger.info(f"OpenAI: MCP tool returned result: {function_response}")
                                     else:
                                         function_response = str(function_response)
-                                        logging.info(f"OpenAI: MCP tool returned non-dict response: {function_response}")
+                                        self.logger.info(f"OpenAI: MCP tool returned non-dict response: {function_response}")
                                 except Exception as e:
-                                    logging.error(f"OpenAI: Exception calling MCP tool {function_name}: {e}")
+                                    self.logger.error(f"OpenAI: Exception calling MCP tool {function_name}: {e}")
                                     function_response = f"Error calling function: {str(e)}"
                             else:
-                                logging.warning(f"OpenAI: No MCP client available for function: {function_name}")
+                                self.logger.warning(f"OpenAI: No MCP client available for function: {function_name}")
                                 function_response = f"Function {function_name} not available"
 
                         if function_response:
@@ -292,17 +305,21 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                             await self.ws.send(json.dumps({"type": "response.create"}))
 
             elif t == "conversation.item.input_audio_transcription.completed":
-                logging.info("Speaker: %s", msg["transcript"].rstrip())
+                self.logger.info("Speaker: %s", msg["transcript"].rstrip())
             elif t == "response.audio_transcript.done":
-                logging.info("Engine: %s", msg["transcript"])            
+                self.logger.info("Engine: %s", msg["transcript"])            
 
             elif t == "conversation.item.input_audio_transcription.failed":
-                logging.error(msg)
+                self.logger.error(f"OpenAI: Audio transcription failed: {msg}")
                 self.terminate_call()
             elif t == "error":
-                logging.info(msg)
+                self.logger.error(f"OpenAI: Error message received: {msg}")
+                self.terminate_call()
+            elif t == "response.failed":
+                self.logger.error(f"OpenAI: Response failed: {msg}")
+                self.terminate_call()
             else:
-                logging.debug(t)
+                self.logger.debug(f"OpenAI: Unhandled message type: {t}")
 
     def terminate_call(self):
         """ Terminates the call """
@@ -320,7 +337,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                 count += 1
         except Empty:
             if count > 0:
-                logging.info("dropping %d packets", count)
+                self.logger.info("dropping %d packets", count)
 
     async def send(self, audio):
         """ Sends audio to OpenAI """
@@ -336,10 +353,10 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         try:
             await self.ws.send(json.dumps(event))
         except ConnectionClosedError as e:
-            logging.error(f"WebSocket connection closed: {e.code}, {e.reason}")
+            self.logger.error(f"WebSocket connection closed: {e.code}, {e.reason}")
             self.terminate_call()
         except Exception as e:
-            logging.error(f"Unexpected error while sending audio: {e}")
+            self.logger.error(f"Unexpected error while sending audio: {e}")
             self.terminate_call()
 
     async def close(self):

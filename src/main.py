@@ -42,7 +42,7 @@ parser.add_argument('-v', '--version',
 parser.add_argument('-c', '--config',
                     metavar='[CONFIG]',
                     type=str,
-                    default=None,
+                    default='config.ini',
                     help='specify a configuration file')
 
 parser.add_argument("-l", "--loglevel",
@@ -59,9 +59,14 @@ log_handler = TimedRotatingFileHandler(
 )
 log_handler.setFormatter(logging.Formatter('%(asctime)s - tid: %(thread)d - %(levelname)s - %(message)s'))
 
+# Configure root logger for general application logs only
 logger = logging.getLogger()
 logger.setLevel(getattr(logging, parsed_args.loglevel))
 logger.addHandler(log_handler)
+
+# Prevent call-specific loggers from propagating to root logger
+logging.getLogger('call_').setLevel(logging.CRITICAL)
+logging.getLogger('call_').propagate = False
 
 if __name__ == '__main__':
     from engine import run

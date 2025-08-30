@@ -69,9 +69,6 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         self.transfer_by = self.cfg.get("transfer_by", "OPENAI_TRANSFER_BY", self.call.to)
         self.tools = self.cfg.get("tools", "OPENAI_TOOLS")
 
-        self.mcp_url = self.cfg.get("mcp_url")
-        self.mcp_key = self.cfg.get("mcp_key")
-
         # normalize codec
         if self.codec.name == "mulaw":
             self.codec_name = "g711_ulaw"
@@ -171,6 +168,27 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         else:
             self.logger.info("OpenAI: No tools configured for session")
         
+        # Process API functions from bot config
+        api_functions = []
+        if hasattr(self, 'cfg') and isinstance(self.cfg, dict) and 'functions' in self.cfg and self.cfg['functions']:
+            for func in self.cfg['functions']:
+                if isinstance(func, dict) and 'function' in func:
+                    # Extract function definition and add to session
+                    api_functions.append(func['function'])
+                    # Store URL and token for later use
+                    if not hasattr(self, 'api_functions'):
+                        self.api_functions = {}
+                    self.api_functions[func['function']['name']] = {
+                        'url': func.get('url'),
+                        'token': func.get('token'),
+                        'api_template': func.get('input_schema', {})
+                    }
+        
+        # Add API functions to tools
+        if api_functions:
+            self.session["tools"].extend(api_functions)
+            self.logger.info(f"OpenAI: Added API functions: {[f['name'] for f in api_functions]}")
+        
         if self.instructions:
             self.session["instructions"] = self.instructions
 
@@ -251,6 +269,8 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                                 )
                             }
                             self.call.mi_conn.execute('ua_session_update', params)
+                        elif hasattr(self, 'api_functions') and function_name in self.api_functions:
+                            function_response = await self.call_api_function(function_name, params_dict)
 
                         if function_response:
                             payload = {
@@ -321,5 +341,70 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
 
     async def close(self):
         await self.ws.close()
+
+    async def call_api_function(self, function_name, params):
+        """Calls external API function"""
+        try:
+            func_config = self.api_functions[function_name]
+            url = func_config['url']
+            token = func_config.get('token')
+            template = func_config.get('api_template', {})
+            
+            headers = {'Content-Type': 'application/json'}
+            if token:
+                headers['Authorization'] = f'Bearer {token}'
+            
+            # Prepare variables for template
+            variables = {
+                'function_name': function_name,
+                'parameters': params,
+                'user': self.call.user,
+                'bot_id': getattr(self.call, 'bot_id', 'unknown'),
+                'call_id': self.call.b2b_key
+            }
+            
+            # Add function_name to parameters for template substitution
+            if isinstance(params, dict):
+                params['function_name'] = function_name
+            
+            # Apply template with variable substitution
+            self.logger.info(f"Template: {template}")
+            self.logger.info(f"Variables: {variables}")
+            payload = self.apply_template(template, variables)
+            self.logger.info(f"Final payload: {payload}")
+            
+            response = requests.post(url, json=payload, headers=headers)
+            print(response.json())
+            response.raise_for_status()
+            
+            result = response.json()
+            self.logger.info(f"API function {function_name} called successfully: {result}")
+            return str(result)
+            
+        except Exception as e:
+            self.logger.error(f"Error calling API function {function_name}: {e}")
+            return f"Error: {str(e)}"
+
+    def apply_template(self, template, variables):
+        """Apply template with variable substitution"""
+        import json
+        import re
+        
+        # Convert template to string for replacement
+        template_str = json.dumps(template)
+        
+        # Create combined variables dict
+        all_vars = variables.copy()
+        if 'parameters' in variables and isinstance(variables['parameters'], dict):
+            all_vars.update(variables['parameters'])
+        
+        # Replace any variables in format {variable_name}
+        for var_name, var_value in all_vars.items():
+            placeholder = f"{{{var_name}}}"
+            if isinstance(var_value, dict):
+                var_value = json.dumps(var_value)
+            template_str = template_str.replace(placeholder, str(var_value))
+        
+        return json.loads(template_str)
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

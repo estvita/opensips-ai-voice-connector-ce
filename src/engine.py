@@ -80,6 +80,7 @@ def fetch_bot_config(api_url, bot, api_key=None, bot_domain=None):
             
         response = requests.get(f"{api_url}", headers=headers, params=params, timeout=10)
         response.raise_for_status()
+        logging.info(f"Response from API: {response.json()}")
         return response.json()
     except Exception as e:
         logging.exception(f"Error during API call: {e}")

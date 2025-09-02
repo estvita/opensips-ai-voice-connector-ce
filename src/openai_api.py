@@ -300,24 +300,24 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                     server_label = item.get("server_label")
                     output = item.get("output")
                     if output:
-                        payload = {
-                            "type": "conversation.item.create",
-                            "item": {
-                                "type": "message",
-                                "role": "assistant",
-                                "content": [
-                                    {"type": "text", "text": output}
-                                ]
-                            }
-                        }
-                        await self.ws.send(json.dumps(payload))
+                        # payload = {
+                        #     "type": "conversation.item.create",
+                        #     "item": {
+                        #         "type": "message",
+                        #         "role": "assistant",
+                        #         "content": [
+                        #             {"type": "text", "text": output}
+                        #         ]
+                        #     }
+                        # }
+                        # await self.ws.send(json.dumps(payload))
                         response_payload = {
                             "type": "response.create",
                             "response": {
-                                "conversation": "auto",
-                                "instructions": "Be sure to voice the latest results from the MCP server"
+                                "instructions": f"Report this result to the user: {output}"
                             }
                         }
+                        print(response_payload)
                         await self.ws.send(json.dumps(response_payload))
 
             # elif t == "response.output_item.done":

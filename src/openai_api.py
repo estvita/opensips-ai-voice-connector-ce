@@ -296,8 +296,9 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             elif t == "response.output_item.done":
                 item = msg.get("item")
                 if item and item.get("type") == "mcp_call":
+                    item_id = item.get("id")
+                    server_label = item.get("server_label")
                     output = item.get("output")
-                    print(output)
                     if output:
                         payload = {
                             "type": "conversation.item.create",
@@ -318,6 +319,37 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                             }
                         }
                         await self.ws.send(json.dumps(response_payload))
+
+            # elif t == "response.output_item.done":
+            #     item = msg.get("item")
+            #     if item and item.get("type") == "mcp_call":
+            #         item_id = item.get("id")
+            #         server_label = item.get("server_label")
+            #         print(msg)
+            #         output = item.get("output")
+            #         if output:
+            # #  mcp_tool_call not working....
+            # # TODO: add https://platform.openai.com/docs/api-reference/realtime_client_events/conversation/item/create
+            #             payload = {
+            #                 "type": "conversation.item.create",
+            #                 "item": {
+            #                     "id": item_id,
+            #                     "arguments": item.get("arguments", {}),
+            #                     "name": item.get("name"),
+            #                     "type": "mcp_tool_call",
+            #                     "output": output,
+            #                     "server_label": server_label
+            #                 }
+            #             }
+            #             await self.ws.send(json.dumps(payload))
+            #             response_payload = {
+            #                 "type": "response.create",
+            #                 "response": {
+            #                     "conversation": "auto",
+            #                     "instructions": "Be sure to voice the latest results from the MCP server"
+            #                 }
+            #             }
+            #             await self.ws.send(json.dumps(response_payload))
 
             elif t == "conversation.item.input_audio_transcription.completed":
                 self.logger.info("Speaker: %s", msg["transcript"].rstrip())

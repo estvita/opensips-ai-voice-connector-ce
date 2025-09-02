@@ -143,6 +143,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             "tools": [],
             "tool_choice": "auto",
         }
+
         if self.transfer_to:
             self.session["tools"].append({
                 "type": "function",
@@ -154,14 +155,6 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                     "required": []
                 }
             })
-        # if self.mcp_url:
-        #     self.session["tools"].append({
-        #         "type": "mcp",
-        #         "server_label": "testserver",
-        #         "server_url": self.mcp_url,
-        #         "require_approval": "never",
-        #     })
-        # Set tools based on what's available
         if self.tools:
             self.session["tools"] = self.tools
             self.logger.info("OpenAI: Using configured tools in session")
@@ -189,6 +182,21 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
             self.session["tools"].extend(api_functions)
             self.logger.info(f"OpenAI: Added API functions: {[f['name'] for f in api_functions]}")
         
+        # Process MCP servers from bot config
+        if hasattr(self, 'cfg') and isinstance(self.cfg, dict) and 'mcp_servers' in self.cfg and self.cfg['mcp_servers']:
+            for mcp_server in self.cfg['mcp_servers']:
+                if isinstance(mcp_server, dict) and 'url' in mcp_server:
+                    mcp_tool = {
+                        "type": "mcp",
+                        "server_label": mcp_server.get('label', 'mcp_server'),
+                        "server_url": mcp_server['url'],
+                        "require_approval": mcp_server.get('require_approval', 'never')
+                    }
+                    if mcp_server.get('api_key'):
+                        mcp_tool['api_key'] = mcp_server['api_key']
+                    self.session["tools"].append(mcp_tool)
+                    self.logger.info(f"OpenAI: Added MCP server: {mcp_server.get('label', 'mcp_server')} at {mcp_server['url']}")
+        
         if self.instructions:
             self.session["instructions"] = self.instructions
 
@@ -215,6 +223,7 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         leftovers = b''
         async for smsg in self.ws:
             msg = json.loads(smsg)
+            self.logger.info(f"Received message: {msg}")
             t = msg["type"]
             if t == "response.audio.delta":
                 media = base64.b64decode(msg["delta"])
@@ -284,11 +293,38 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                             await self.ws.send(json.dumps(payload))
                             await self.ws.send(json.dumps({"type": "response.create"}))
 
+            elif t == "response.output_item.done":
+                item = msg.get("item")
+                if item and item.get("type") == "mcp_call":
+                    output = item.get("output")
+                    print(output)
+                    if output:
+                        payload = {
+                            "type": "conversation.item.create",
+                            "item": {
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [
+                                    {"type": "text", "text": output}
+                                ]
+                            }
+                        }
+                        await self.ws.send(json.dumps(payload))
+                        response_payload = {
+                            "type": "response.create",
+                            "response": {
+                                "conversation": "auto",
+                                "instructions": "Be sure to voice the latest results from the MCP server"
+                            }
+                        }
+                        await self.ws.send(json.dumps(response_payload))
+
             elif t == "conversation.item.input_audio_transcription.completed":
                 self.logger.info("Speaker: %s", msg["transcript"].rstrip())
             elif t == "response.audio_transcript.done":
-                self.logger.info("Engine: %s", msg["transcript"])            
-
+                self.logger.info("Engine: %s", msg["transcript"])       
+            elif t == "mcp_list_tools.in_progress":
+                self.logger.info(f"OpenAI: MCP list tools in progress: {msg}")
             elif t == "conversation.item.input_audio_transcription.failed":
                 self.logger.error(f"OpenAI: Audio transcription failed: {msg}")
                 self.terminate_call()

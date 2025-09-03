@@ -39,5 +39,86 @@ The following parameters can be tuned for this engine:
 | `openai` | `turn_detection_prefix_ms` | `OPENAI_TURN_DETECT_PREFIX_MS` | no | Configures [OpenAI Turn Detection](https://platform.openai.com/docs/api-reference/realtime-client-events/session/update) `prefix_padding_ms` | `300` |
 | `openai`  |  `transfer_to`  | `OPENAI_TRANSFER_TO` | no | [SIP uri](https://en.wikipedia.org/wiki/SIP_URI_scheme) for call transfer function | not set |
 | `openai`  |  `transfer_by`  | `OPENAI_TRANSFER_BY` | no | [SIP uri](https://en.wikipedia.org/wiki/SIP_URI_scheme) for call transfer function | not set |
-| `openai`  |  `mcp_server_url`  | `MCP_SERVER_URL` | no | MCP (Model Context Protocol) server URL for external tool integration | not set |
-| `openai`  |  `mcp_api_key`  | `MCP_API_KEY` | no | MCP server authentication key (optional) | not set |
+
+
+## Function Calling
+
+The OpenAI flavor supports [Function Calling](https://platform.openai.com/docs/guides/realtime-conversations#function-calling) capabilities, allowing the AI to execute specific actions during conversations. This enables dynamic call management and integration with external systems.
+
+### Built-in Functions
+
+The following functions are automatically available:
+
+- **`terminate_call`**: Immediately ends the current call session
+- **`transfer_call`**: Transfers the call to another SIP endpoint using the configured `transfer_to` and `transfer_by` parameters
+
+### Custom API Functions
+
+You can define custom API functions by configuring the `functions` parameter in your configuration. These functions allow the AI to interact with external APIs and services.
+
+Example configuration:
+```ini
+[openai]
+functions = [
+    {
+        "name": "get_weather",
+        "description": "Get current weather information",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string",
+                    "description": "City name or coordinates"
+                }
+            },
+            "required": ["location"]
+        }
+    }
+]
+```
+
+## MCP Server Integration
+
+The OpenAI flavor supports integration with [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers, enabling the AI to access external tools and data sources during conversations.
+
+### Configuration
+
+MCP servers can be configured using the following parameters:
+
+- **`mcp_server_url`**: The URL endpoint of your MCP server
+- **`mcp_api_key`**: Optional authentication key for the MCP server
+
+### Advanced MCP Configuration
+
+For more complex MCP setups, you can configure multiple MCP servers with detailed options:
+
+```ini
+[openai]
+mcp_servers = [
+    {
+        "url": "https://your-mcp-server.com/mcp",
+        "api_key": "your-api-key",
+        "label": "main_server",
+        "require_approval": "always"
+    },
+    {
+        "url": "https://another-mcp-server.com/mcp",
+        "label": "secondary_server",
+        "require_approval": "never"
+    }
+]
+```
+
+### MCP Server Capabilities
+
+MCP servers can provide various capabilities including:
+- **Data Retrieval**: Access to databases, APIs, and external services
+- **Tool Execution**: Running scripts, commands, or workflows
+- **Context Management**: Maintaining conversation state and history
+- **Custom Integrations**: Connecting to proprietary systems and services
+
+The AI will automatically use available MCP tools when they can help fulfill user requests, making conversations more dynamic and informative.
+
+## Examples and Use Cases
+
+For practical examples and detailed use cases of Function Calling and MCP server integration, see [OpenAI Examples](openai-examples.md).

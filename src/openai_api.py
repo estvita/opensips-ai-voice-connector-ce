@@ -317,7 +317,6 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
                                 "instructions": f"Report this result to the user: {output}"
                             }
                         }
-                        print(response_payload)
                         await self.ws.send(json.dumps(response_payload))
 
             # elif t == "response.output_item.done":

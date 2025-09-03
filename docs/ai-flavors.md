@@ -22,7 +22,9 @@ read more about this flavor [here](ai/deepgram.md).
 
 The OpenAI flavor hooks directly into the [OpenAI's Realtime
 API](https://openai.com/index/introducing-the-realtime-api/) that provides
-direct Speech-to-Speech interpretation of the user's conversation.
+direct Speech-to-Speech interpretation of the user's conversation. It supports
+Function Calling for dynamic call management and MCP (Model Context Protocol)
+server integration for external tool access.
 Find out more information about OpenAI flavor [here](ai/openai.md).
 
 ### Deepgram Native

@@ -34,6 +34,11 @@ allows seamless integration of either real-time voice interactions or a
 multi-step process that converts speech to text, processes it, and converts
 responses back into speech for the end user.
 
+Advanced features like Function Calling and MCP (Model Context Protocol) server
+integration enable dynamic call management, external API interactions, and
+access to external tools and data sources, making the voice bot more
+intelligent and capable of handling complex user requests.
+
 
 ## Flavors
 
@@ -45,7 +50,7 @@ supported flavors are:
                                    Speech-to-Text, push transcribe to OpenAI
                                    and then push the response back to Deepgram
                                    Text-to-Speech engine
-* [OpenAI](docs/ai/openai.md): use OpenAI Real-Time Speech-to-Speech engine
+* [OpenAI](docs/ai/openai.md): use OpenAI Real-Time Speech-to-Speech engine with Function Calling and MCP server support
 * [Deepgram Native](docs/ai/deepgram-native.md): use Deepgram Voice Agent - their
                                                  new Voice-to-Voice engine
 * [Azure](docs/ai/azure.md): use Azure Speech-to-Text and Text-to-Speech
@@ -96,6 +101,8 @@ Documentation pages contain the following topics:
 * [Configuration](docs/config.md) - Information about configuration file
 * [Implementation](docs/implementation.md) - Implementation details
 * [AI Flavors](docs/ai-flavors.md) - Different AI flavors supported
+* [OpenAI Documentation](docs/ai/openai.md) - Detailed OpenAI configuration including Function Calling and MCP server integration
+* [OpenAI Examples](docs/ai/openai-examples.md) - Practical examples and use cases for OpenAI features
 
 
 ## Contribute

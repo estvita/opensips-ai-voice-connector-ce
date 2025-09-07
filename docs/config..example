@@ -1,0 +1,15 @@
+[opensips]
+ip = 127.0.0.1
+port = 8080
+
+[rtp]
+ip = 123.123.123.123
+min_port = 10000
+max_port = 20000
+
+[engine]
+event_ip = 127.0.0.1
+bind_ip = 0.0.0.0
+event_port = 50060
+api_url = http://127.0.0.1:8000/api/bots/
+api_key = XXXXXXXXXXXXXXXXXXXXX

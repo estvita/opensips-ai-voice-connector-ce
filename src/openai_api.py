@@ -223,8 +223,9 @@ class OpenAI(AIEngine):  # pylint: disable=too-many-instance-attributes
         leftovers = b''
         async for smsg in self.ws:
             msg = json.loads(smsg)
-            self.logger.info(f"Received message: {msg}")
             t = msg["type"]
+            if t not in ["response.audio.delta", "response.audio_transcript.delta"]:
+                self.logger.info(f"Received message: {msg}")
             if t == "response.audio.delta":
                 media = base64.b64decode(msg["delta"])
                 packets, leftovers = await self.run_in_thread(
